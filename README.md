@@ -6,8 +6,8 @@ Advanced x86/x64 hooking library.
 ## Features ##
 
 - **Core Features**
-- Transaction based API
-- x86 and x64 support
+ - Transaction based API
+ - x86 and x64 support
 
 - **Inline Hook**
  - The most common hook method. Patches the first instructions of a target function to redirect the code-flow.
