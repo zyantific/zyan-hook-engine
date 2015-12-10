@@ -28,8 +28,8 @@
 
 ***************************************************************************************************/
 
-#ifndef _ZYREX_TYPES_H_
-#define _ZYREX_TYPES_H_
+#ifndef ZYREX_STATUS_H
+#define ZYREX_STATUS_H
 
 #include <stdint.h>
 
@@ -128,4 +128,4 @@ typedef enum ZyrexStatusCode
 #ifdef __cplusplus
 }
 #endif
-#endif /*_ZYREX_STATUS_H_ */
+#endif /*ZYREX_STATUS_H */

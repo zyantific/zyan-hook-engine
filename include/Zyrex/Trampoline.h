@@ -28,8 +28,8 @@
 
 ***************************************************************************************************/
 
-#ifndef _ZYREX_TRAMPOLINE_H_
-#define _ZYREX_TRAMPOLINE_H_
+#ifndef ZYREX_TRAMPOLINE_H
+#define ZYREX_TRAMPOLINE_H
 
 #include <stdint.h>
 #include <Zyrex/Status.h>
@@ -131,4 +131,4 @@ ZyrexStatus ZyrexInstructionAddressFromTrampoline(const void* trampoline,
 
 /* ============================================================================================== */
 
-#endif /*_ZYREX_TRAMPOLINE_H_ */
+#endif /* ZYREX_TRAMPOLINE_H */

@@ -28,12 +28,12 @@
 
 ***************************************************************************************************/
 
-#ifndef _ZYREX_H_
-#define _ZYREX_H_
+#ifndef ZYREX_H
+#define ZYREX_H
 
 #include <Windows.h>
-#include <Zyrex/Defines.h>
-#include <Zyrex/Status.h>
+#include <zyrex/Config.h>
+#include <zyrex/Status.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -115,4 +115,4 @@ ZYREX_DLLEXTERN ZyrexStatus ZyrexTransactionAbort();
 #ifdef __cplusplus
 }
 #endif
-#endif /*_ZYREX_H_ */
+#endif /* ZYREX_H */

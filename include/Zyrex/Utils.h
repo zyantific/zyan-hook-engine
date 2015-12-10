@@ -28,12 +28,12 @@
 
 ***************************************************************************************************/
 
-#ifndef _ZYREX_UTILS_H_
-#define _ZYREX_UTILS_H_
+#ifndef ZYREX_UTILS_H
+#define ZYREX_UTILS_H
 
 #include <stdint.h>
 #include <string.h>
-#include <Zyrex/Defines.h>
+#include <zycore/Defines.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -64,7 +64,7 @@ extern "C" {
  * This function does not perform any checks, like if the target destination is within the range 
  * of a 32 bit relative jump.
  */
-ZYREX_INLINE void ZyrexWriteJumpRelative32(void* address, uintptr_t destination)
+ZYCORE_INLINE void ZyrexWriteJumpRelative32(void* address, uintptr_t destination)
 {
 #pragma pack(push, 1)
     /**
@@ -89,7 +89,7 @@ ZYREX_INLINE void ZyrexWriteJumpRelative32(void* address, uintptr_t destination)
  * @param   address     The address of the jump instruction.
  * @param   destination The memory address that contains the absolute destination for the jump.
  */
-ZYREX_INLINE void ZyrexWriteAbsoluteJump(void* address, uintptr_t destination)
+ZYCORE_INLINE void ZyrexWriteAbsoluteJump(void* address, uintptr_t destination)
 {
 #pragma pack(push, 1)
     /**
@@ -116,4 +116,4 @@ ZYREX_INLINE void ZyrexWriteAbsoluteJump(void* address, uintptr_t destination)
 #ifdef __cplusplus
 }
 #endif
-#endif /*_ZYREX_UTILS_H_ */
+#endif /* ZYREX_UTILS_H */

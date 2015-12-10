@@ -28,9 +28,9 @@
 
 ***************************************************************************************************/
 
-#ifndef _ZYREX_INLINEHOOK_H_
-#define _ZYREX_INLINEHOOK_H_
+#ifndef ZYREX_INLINEHOOK_H
+#define ZYREX_INLINEHOOK_H
 
 
 
-#endif /*_ZYREX_INLINEHOOK_H_ */
+#endif /* ZYREX_INLINEHOOK_H */
