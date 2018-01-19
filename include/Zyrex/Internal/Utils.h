@@ -1,12 +1,8 @@
 /***************************************************************************************************
 
-  Zyan Hook Engine (Zyrex)
-  Version 1.0
-
-  Remarks         : Freeware, Copyright must be included
+  Zyan Hook Library (Zyrex)
 
   Original Author : Florian Bernd
-  Modifications   :
 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -33,7 +29,7 @@
 
 #include <stdint.h>
 #include <string.h>
-#include <zycore/Defines.h>
+#include <Zyrex/Defines.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -64,7 +60,7 @@ extern "C" {
  * This function does not perform any checks, like if the target destination is within the range 
  * of a 32 bit relative jump.
  */
-ZYCORE_INLINE void ZyrexWriteJumpRelative32(void* address, uintptr_t destination)
+ZYREX_INLINE void ZyrexWriteJumpRelative32(void* address, uintptr_t destination)
 {
 #pragma pack(push, 1)
     /**
@@ -89,7 +85,7 @@ ZYCORE_INLINE void ZyrexWriteJumpRelative32(void* address, uintptr_t destination
  * @param   address     The address of the jump instruction.
  * @param   destination The memory address that contains the absolute destination for the jump.
  */
-ZYCORE_INLINE void ZyrexWriteAbsoluteJump(void* address, uintptr_t destination)
+ZYREX_INLINE void ZyrexWriteAbsoluteJump(void* address, uintptr_t destination)
 {
 #pragma pack(push, 1)
     /**

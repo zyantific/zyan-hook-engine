@@ -36,7 +36,7 @@
 #undef OUT // Windows.h
 #include <Zyrex/Trampoline.h>
 #include <Zyrex/Utils.h>
-#include <Zydis.hpp>
+#include <Zydis/Zydis.h>
 
 /* ============================================================================================== */
 /* Defines                                                                                        */
@@ -196,12 +196,12 @@ static ZyrexStatus ZyrexAllocateTrampolineRegionFromLo(uintptr_t addressLo, uint
     while (allocAddress < allocAddressHi)
     {
         // Skip reserved address regions
-        if (allocAddress < systemInfo.lpMinimumApplicationAddress)
+        if (allocAddress < (const uint8_t*)systemInfo.lpMinimumApplicationAddress)
         {
             allocAddress = (const uint8_t*)systemInfo.lpMinimumApplicationAddress;
             continue;
         }
-        if (allocAddress > systemInfo.lpMaximumApplicationAddress)
+        if (allocAddress > (const uint8_t*)systemInfo.lpMaximumApplicationAddress)
         {
             allocAddress = (const uint8_t*)systemInfo.lpMaximumApplicationAddress;
             continue;
@@ -257,12 +257,12 @@ static ZyrexStatus ZyrexAllocateTrampolineRegionFromHi(uintptr_t addressLo, uint
     while (allocAddress >= allocAddressLo)
     {
         // Skip reserved address regions
-        if (allocAddress < systemInfo.lpMinimumApplicationAddress)
+        if (allocAddress < (const uint8_t*)systemInfo.lpMinimumApplicationAddress)
         {
             allocAddress = (const uint8_t*)systemInfo.lpMinimumApplicationAddress;
             continue;
         }
-        if (allocAddress > systemInfo.lpMaximumApplicationAddress)
+        if (allocAddress > (const uint8_t*)systemInfo.lpMaximumApplicationAddress)
         {
             allocAddress = (const uint8_t*)systemInfo.lpMaximumApplicationAddress;
             continue;
@@ -335,10 +335,11 @@ static ZyrexStatus ZyrexAcquireTrampoline(const void* codeAddress, ZyrexTrampoli
     {
         if (currentRegion->freeTrampolineCount > 0)
         {
-            intptr_t currentDistance = abs((intptr_t)currentRegion - (intptr_t)codeAddress);
+            const intptr_t currentDistance = 
+                abs((int)((intptr_t)currentRegion - (intptr_t)codeAddress));
             if (currentDistance < 0x7FFFFFFF)
             {
-                if (currentDistance < abs((intptr_t)bestRegion - (intptr_t)codeAddress))
+                if (currentDistance < abs((int)((intptr_t)bestRegion - (intptr_t)codeAddress)))
                 {
                     bestRegion = currentRegion;
                 }
@@ -479,188 +480,188 @@ static ZyrexStatus ZyrexCopyInstructions(const void* source, void* target,
     assert(target);
     assert(detourPayloadSize > 0);
 
-    // Initialize disassembler
-    Zydis::InstructionInfo info;
-    Zydis::InstructionDecoder decoder;
-#ifdef ZYREX_X86
-    decoder.setDisassemblerMode(Zydis::DisassemblerMode::M32BIT);
-#else
-    decoder.setDisassemblerMode(Zydis::DisassemblerMode::M64BIT);
-#endif
-    Zydis::MemoryInput input(source, sourceBufferSize);
-    decoder.setDataSource(&input);
-    decoder.setInstructionPointer(0);
-
-    // Copy instructions
-    uint8_t instrCount = 0;
-    const uint8_t* instrSource = (const uint8_t*)source;
-    uint8_t* instrTarget = (uint8_t*)target;
-    for (;;)
-    {
-        if (instructionMap && (instrCount >= instructionMapCapacity))
-        {
-            // Translation map is full
-            return ZYREX_ERROR_NOT_HOOKABLE;
-        }
-        if ((instrTarget - (uint8_t*)target) >= targetBufferSize)
-        {
-            // Target buffer is full
-            return ZYREX_ERROR_NOT_HOOKABLE;
-        }
-        if (!decoder.decodeInstruction(info))
-        {
-            // Source buffer is empty
-            return ZYREX_ERROR_NOT_HOOKABLE;
-        }
-        if ((info.flags & Zydis::IF_ERROR_MASK))
-        {
-            // Invalid instruction
-            return ZYREX_ERROR_DISASSEMBLER;
-        }
-        memcpy(instrTarget, instrSource, info.length);
-        int8_t offset = 0;
-        if (info.flags & Zydis::IF_RELATIVE)
-        {
-            if (info.operand[0].type == Zydis::OperandType::REL_IMMEDIATE)
-            {
-                if (info.operand[0].size != 32)
-                {
-                    // Enlarge relative instruction to 32 bit
-                    uint8_t* enlargeTarget = (uint8_t*)instrTarget;
-                    offset = 6 - info.length;
-                    *(enlargeTarget) = 0x0F;
-                    switch (info.mnemonic)
-                    {
-                    case Zydis::InstructionMnemonic::JMP:
-                        *(enlargeTarget) = 0xE9;
-                        offset = 5 - info.length;
-                        break;
-                    case Zydis::InstructionMnemonic::JO:
-                        *(++enlargeTarget) = 0x80;
-                        break;
-                    case Zydis::InstructionMnemonic::JNO:
-                        *(++enlargeTarget) = 0x81;
-                        break;
-                    case Zydis::InstructionMnemonic::JB:
-                        *(++enlargeTarget) = 0x82;
-                        break;
-                    case Zydis::InstructionMnemonic::JNB:
-                        *(++enlargeTarget) = 0x83;
-                        break;
-                    case Zydis::InstructionMnemonic::JE:
-                        *(++enlargeTarget) = 0x84;
-                        break;
-                    case Zydis::InstructionMnemonic::JNE:
-                        *(++enlargeTarget) = 0x85;
-                        break;
-                    case Zydis::InstructionMnemonic::JBE:
-                        *(++enlargeTarget) = 0x86;
-                        break;
-                    case Zydis::InstructionMnemonic::JA:
-                        *(++enlargeTarget) = 0x87;
-                        break;
-                    case Zydis::InstructionMnemonic::JS:
-                        *(++enlargeTarget) = 0x88;
-                        break;
-                    case Zydis::InstructionMnemonic::JNS:
-                        *(++enlargeTarget) = 0x89;
-                        break;
-                    case Zydis::InstructionMnemonic::JP:
-                        *(++enlargeTarget) = 0x8A;
-                        break;
-                    case Zydis::InstructionMnemonic::JNP:
-                        *(++enlargeTarget) = 0x8B;
-                        break;
-                    case Zydis::InstructionMnemonic::JL:
-                        *(++enlargeTarget) = 0x8C;
-                        break;
-                    case Zydis::InstructionMnemonic::JGE:
-                        *(++enlargeTarget) = 0x8D;
-                        break;
-                    case Zydis::InstructionMnemonic::JLE:
-                        *(++enlargeTarget) = 0x8E;
-                        break;
-                    case Zydis::InstructionMnemonic::JG:
-                        *(++enlargeTarget) = 0x8F;
-                        break;
-                    default:
-                        return ZYREX_ERROR_NOT_ENLARGEABLE;
-                    }
-                    int32_t sourceOffset = 0;
-                    switch (info.operand[0].size)
-                    {
-                    case 8:
-                        sourceOffset = info.operand[0].lval.sbyte;
-                        break;
-                    case 16:
-                        sourceOffset = info.operand[0].lval.sword;
-                        break;
-                    default:
-                        assert(0);
-                    }
-                    int32_t rebasedOffset;
-                    ZYREX_CHECK(ZyrexCalcRelativeOffset(instrSource + info.length, 
-                        instrTarget + offset + info.length, 0, sourceOffset, &rebasedOffset));
-                    *(int32_t*)++enlargeTarget = (int32_t)rebasedOffset;
-                } else
-                {
-                    // Update relative offset
-                    assert(info.mnemonic == Zydis::InstructionMnemonic::JMP ||
-                        info.mnemonic == Zydis::InstructionMnemonic::CALL);
-                    // TODO: Add option
-                    if (info.mnemonic == Zydis::InstructionMnemonic::CALL)
-                    {
-                        return ZYREX_ERROR_NOT_HOOKABLE;
-                    }
-                    int32_t rebasedOffset;
-                    ZYREX_CHECK(ZyrexCalcRelativeOffset(instrSource, instrTarget, info.length, 
-                        info.operand[0].lval.sdword, &rebasedOffset));
-                    *(int32_t*)((uintptr_t)instrTarget + info.operand[0].lvalElementOffset) = 
-                        rebasedOffset;
-                }
-            } else
-            {
-                // RIP-relative instruction
-                for (unsigned i = 0; i < 4; ++i)
-                {
-                    if ((info.operand[i].type == Zydis::OperandType::MEMORY) &&
-                        (info.operand[i].base == Zydis::Register::RIP))
-                    {
-                        int32_t rebasedOffset;
-                        ZYREX_CHECK(ZyrexCalcRelativeOffset(instrSource, instrTarget, info.length, 
-                            info.operand[i].lval.sdword, &rebasedOffset));
-                        *(int32_t*)((uintptr_t)instrTarget + info.operand[i].lvalElementOffset) = 
-                            rebasedOffset;
-                        break;
-                    }
-                }
-            }
-        }
-        if (instructionMap)
-        {
-            instructionMap[instrCount].offsetCode = (uint8_t)info.instrAddress;
-            instructionMap[instrCount].offsetTrampoline = (uint8_t)(instrTarget - (uint8_t*)target);
-        }
-        ++instrCount;
-        instrSource += info.length;
-        instrTarget += info.length + offset;
-        if (info.instrPointer >= detourPayloadSize)
-        {
-            if (bytesRead)
-            {
-                *bytesRead = (uint8_t)info.instrPointer;
-            }
-            if (bytesWritten)
-            {
-                *bytesWritten = (uint8_t)(instrTarget - (uint8_t*)target);
-            }
-            if (instructionCount)
-            {
-                *instructionCount = instrCount;
-            }
-            return ZYREX_ERROR_SUCCESS;
-        }
-    }
+//    // Initialize disassembler
+//    Zydis::InstructionInfo info;
+//    Zydis::InstructionDecoder decoder;
+//#ifdef ZYREX_X86
+//    decoder.setDisassemblerMode(Zydis::DisassemblerMode::M32BIT);
+//#else
+//    decoder.setDisassemblerMode(Zydis::DisassemblerMode::M64BIT);
+//#endif
+//    Zydis::MemoryInput input(source, sourceBufferSize);
+//    decoder.setDataSource(&input);
+//    decoder.setInstructionPointer(0);
+//
+//    // Copy instructions
+//    uint8_t instrCount = 0;
+//    const uint8_t* instrSource = (const uint8_t*)source;
+//    uint8_t* instrTarget = (uint8_t*)target;
+//    for (;;)
+//    {
+//        if (instructionMap && (instrCount >= instructionMapCapacity))
+//        {
+//            // Translation map is full
+//            return ZYREX_ERROR_NOT_HOOKABLE;
+//        }
+//        if ((instrTarget - (uint8_t*)target) >= targetBufferSize)
+//        {
+//            // Target buffer is full
+//            return ZYREX_ERROR_NOT_HOOKABLE;
+//        }
+//        if (!decoder.decodeInstruction(info))
+//        {
+//            // Source buffer is empty
+//            return ZYREX_ERROR_NOT_HOOKABLE;
+//        }
+//        if ((info.flags & Zydis::IF_ERROR_MASK))
+//        {
+//            // Invalid instruction
+//            return ZYREX_ERROR_DISASSEMBLER;
+//        }
+//        memcpy(instrTarget, instrSource, info.length);
+//        int8_t offset = 0;
+//        if (info.flags & Zydis::IF_RELATIVE)
+//        {
+//            if (info.operand[0].type == Zydis::OperandType::REL_IMMEDIATE)
+//            {
+//                if (info.operand[0].size != 32)
+//                {
+//                    // Enlarge relative instruction to 32 bit
+//                    uint8_t* enlargeTarget = (uint8_t*)instrTarget;
+//                    offset = 6 - info.length;
+//                    *(enlargeTarget) = 0x0F;
+//                    switch (info.mnemonic)
+//                    {
+//                    case Zydis::InstructionMnemonic::JMP:
+//                        *(enlargeTarget) = 0xE9;
+//                        offset = 5 - info.length;
+//                        break;
+//                    case Zydis::InstructionMnemonic::JO:
+//                        *(++enlargeTarget) = 0x80;
+//                        break;
+//                    case Zydis::InstructionMnemonic::JNO:
+//                        *(++enlargeTarget) = 0x81;
+//                        break;
+//                    case Zydis::InstructionMnemonic::JB:
+//                        *(++enlargeTarget) = 0x82;
+//                        break;
+//                    case Zydis::InstructionMnemonic::JNB:
+//                        *(++enlargeTarget) = 0x83;
+//                        break;
+//                    case Zydis::InstructionMnemonic::JE:
+//                        *(++enlargeTarget) = 0x84;
+//                        break;
+//                    case Zydis::InstructionMnemonic::JNE:
+//                        *(++enlargeTarget) = 0x85;
+//                        break;
+//                    case Zydis::InstructionMnemonic::JBE:
+//                        *(++enlargeTarget) = 0x86;
+//                        break;
+//                    case Zydis::InstructionMnemonic::JA:
+//                        *(++enlargeTarget) = 0x87;
+//                        break;
+//                    case Zydis::InstructionMnemonic::JS:
+//                        *(++enlargeTarget) = 0x88;
+//                        break;
+//                    case Zydis::InstructionMnemonic::JNS:
+//                        *(++enlargeTarget) = 0x89;
+//                        break;
+//                    case Zydis::InstructionMnemonic::JP:
+//                        *(++enlargeTarget) = 0x8A;
+//                        break;
+//                    case Zydis::InstructionMnemonic::JNP:
+//                        *(++enlargeTarget) = 0x8B;
+//                        break;
+//                    case Zydis::InstructionMnemonic::JL:
+//                        *(++enlargeTarget) = 0x8C;
+//                        break;
+//                    case Zydis::InstructionMnemonic::JGE:
+//                        *(++enlargeTarget) = 0x8D;
+//                        break;
+//                    case Zydis::InstructionMnemonic::JLE:
+//                        *(++enlargeTarget) = 0x8E;
+//                        break;
+//                    case Zydis::InstructionMnemonic::JG:
+//                        *(++enlargeTarget) = 0x8F;
+//                        break;
+//                    default:
+//                        return ZYREX_ERROR_NOT_ENLARGEABLE;
+//                    }
+//                    int32_t sourceOffset = 0;
+//                    switch (info.operand[0].size)
+//                    {
+//                    case 8:
+//                        sourceOffset = info.operand[0].lval.sbyte;
+//                        break;
+//                    case 16:
+//                        sourceOffset = info.operand[0].lval.sword;
+//                        break;
+//                    default:
+//                        assert(0);
+//                    }
+//                    int32_t rebasedOffset;
+//                    ZYREX_CHECK(ZyrexCalcRelativeOffset(instrSource + info.length, 
+//                        instrTarget + offset + info.length, 0, sourceOffset, &rebasedOffset));
+//                    *(int32_t*)++enlargeTarget = (int32_t)rebasedOffset;
+//                } else
+//                {
+//                    // Update relative offset
+//                    assert(info.mnemonic == Zydis::InstructionMnemonic::JMP ||
+//                        info.mnemonic == Zydis::InstructionMnemonic::CALL);
+//                    // TODO: Add option
+//                    if (info.mnemonic == Zydis::InstructionMnemonic::CALL)
+//                    {
+//                        return ZYREX_ERROR_NOT_HOOKABLE;
+//                    }
+//                    int32_t rebasedOffset;
+//                    ZYREX_CHECK(ZyrexCalcRelativeOffset(instrSource, instrTarget, info.length, 
+//                        info.operand[0].lval.sdword, &rebasedOffset));
+//                    *(int32_t*)((uintptr_t)instrTarget + info.operand[0].lvalElementOffset) = 
+//                        rebasedOffset;
+//                }
+//            } else
+//            {
+//                // RIP-relative instruction
+//                for (unsigned i = 0; i < 4; ++i)
+//                {
+//                    if ((info.operand[i].type == Zydis::OperandType::MEMORY) &&
+//                        (info.operand[i].base == Zydis::Register::RIP))
+//                    {
+//                        int32_t rebasedOffset;
+//                        ZYREX_CHECK(ZyrexCalcRelativeOffset(instrSource, instrTarget, info.length, 
+//                            info.operand[i].lval.sdword, &rebasedOffset));
+//                        *(int32_t*)((uintptr_t)instrTarget + info.operand[i].lvalElementOffset) = 
+//                            rebasedOffset;
+//                        break;
+//                    }
+//                }
+//            }
+//        }
+//        if (instructionMap)
+//        {
+//            instructionMap[instrCount].offsetCode = (uint8_t)info.instrAddress;
+//            instructionMap[instrCount].offsetTrampoline = (uint8_t)(instrTarget - (uint8_t*)target);
+//        }
+//        ++instrCount;
+//        instrSource += info.length;
+//        instrTarget += info.length + offset;
+//        if (info.instrPointer >= detourPayloadSize)
+//        {
+//            if (bytesRead)
+//            {
+//                *bytesRead = (uint8_t)info.instrPointer;
+//            }
+//            if (bytesWritten)
+//            {
+//                *bytesWritten = (uint8_t)(instrTarget - (uint8_t*)target);
+//            }
+//            if (instructionCount)
+//            {
+//                *instructionCount = instrCount;
+//            }
+//            return ZYREX_ERROR_SUCCESS;
+//        }
+//    }
 }
 
 /* ============================================================================================== */
@@ -692,10 +693,11 @@ ZyrexStatus ZyrexCreateTrampoline(const void* codeAddress, uint8_t detourPayload
     {
         if (currentRegion->freeTrampolineCount > 0)
         {
-            intptr_t currentDistance = abs((intptr_t)currentRegion - (intptr_t)codeAddress);
+            const intptr_t currentDistance = 
+                abs((int)((intptr_t)currentRegion - (intptr_t)codeAddress));
             if (currentDistance < 0x7FFFFFFF)
             {
-                if (currentDistance < abs((intptr_t)region - (intptr_t)codeAddress))
+                if (currentDistance < abs((int)((intptr_t)region - (intptr_t)codeAddress)))
                 {
                     region = currentRegion;
                 }

@@ -1,12 +1,8 @@
 /***************************************************************************************************
 
-  Zyan Hook Engine (Zyrex)
-  Version 1.0
-
-  Remarks         : Freeware, Copyright must be included
+  Zyan Hook Library (Zyrex)
 
   Original Author : Florian Bernd
-  Modifications   :
 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
