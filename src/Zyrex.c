@@ -1,12 +1,8 @@
 /***************************************************************************************************
 
-  Zyan Hook Engine (Zyrex)
-  Version 1.0
-
-  Remarks         : Freeware, Copyright must be included
+  Zyan Hook Library (Zyrex)
 
   Original Author : Florian Bernd
-  Modifications   :
 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -61,13 +57,13 @@ typedef struct ZyrexOperation
     struct ZyrexOperation* next;
 } ZyrexOperation;
 
-typedef struct ZyrexInlineOperation
+typedef struct ZyrexInlineOperation_
 {
     ZyrexOperationType type;
     ZyrexOperationAction action;
     struct ZyrexOperation* next;
     const void* trampoline;
-};
+} ZyrexInlineOperation;
 
 /* ============================================================================================== */
 /* Static Variables                                                                               */
@@ -135,6 +131,7 @@ ZyrexStatus ZyrexTransactionCommit()
 
 ZyrexStatus ZyrexTransactionCommitEx(const void** failedOperation)
 {
+    ZYREX_UNUSED_PARAMETER(failedOperation);
     return ZYREX_ERROR_SUCCESS;
 }
 

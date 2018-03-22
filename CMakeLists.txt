@@ -46,11 +46,12 @@ endif ()
 
 add_library("Zyrex")
 
-option(ZYDIS_BUILD_EXAMPLES "" OFF)
-option(ZYDIS_BUILD_TOOLS "" OFF)
+option(ZYDIS_MINIMAL_MODE "" ON)
 option(ZYDIS_FEATURE_FORMATTER "" OFF)
 option(ZYDIS_FEATURE_EVEX "" OFF)
 option(ZYDIS_FEATURE_MVEX "" OFF)
+option(ZYDIS_BUILD_EXAMPLES "" OFF)
+option(ZYDIS_BUILD_TOOLS "" OFF)
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/dependencies/zydis" EXCLUDE_FROM_ALL)
 target_link_libraries("Zyrex" PRIVATE "Zydis")
 
@@ -65,14 +66,13 @@ if (ZYREX_NO_LIBC)
 endif ()
 
 target_sources("Zyrex"
-    PUBLIC
+    PRIVATE
         "${CMAKE_CURRENT_LIST_DIR}/include/Zyrex/Defines.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Zyrex/InlineHook.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Zyrex/Status.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Zyrex/Zyrex.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Zyrex/Internal/Trampoline.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Zyrex/Internal/Utils.h"
-    PRIVATE
         "src/InlineHook.c"
         "src/Trampoline.c"
         "src/Utils.c"
@@ -93,9 +93,9 @@ install(DIRECTORY "include" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 # Examples                                                                                        #
 # =============================================================================================== #
 
-#if (ZYREX_BUILD_EXAMPLES)
-#    add_executable("SimpleDemo" "examples/SimpleDemo.c")
-#    target_link_libraries("SimpleDemo" "Zyrex")
-#    set_target_properties("SimpleDemo" PROPERTIES FOLDER "Examples/SimpleDemo")
-#    target_compile_definitions("SimpleDemo" PRIVATE "_CRT_SECURE_NO_WARNINGS")
-#endif ()
+if (ZYREX_BUILD_EXAMPLES)
+    add_executable("InlineHook" "examples/InlineHook.c")
+    target_link_libraries("InlineHook" "Zyrex")
+    set_target_properties("InlineHook" PROPERTIES FOLDER "Examples/InlineHook")
+    target_compile_definitions("InlineHook" PRIVATE "_CRT_SECURE_NO_WARNINGS")
+endif ()

@@ -1,12 +1,8 @@
 /***************************************************************************************************
 
-  Zyan Hook Engine (Zyrex)
-  Version 1.0
-
-  Remarks         : Freeware, Copyright must be included
+  Zyan Hook Library (Zyrex)
 
   Original Author : Florian Bernd
-  Modifications   :
 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -32,10 +28,8 @@
 #include <stdint.h>
 #include <string.h>
 #include <Windows.h>
-#undef IN  // Windows.h
-#undef OUT // Windows.h
-#include <Zyrex/Trampoline.h>
-#include <Zyrex/Utils.h>
+#include <Zyrex/Internal/Trampoline.h>
+#include <Zyrex/Internal/Utils.h>
 #include <Zydis/Zydis.h>
 
 /* ============================================================================================== */
@@ -53,7 +47,7 @@
 #define ZYREX_TRAMPOLINE_RESTORE_SIZE       19
 
 /**
- * @brief   Defines the maximum amount of items in the trampoline instruction translation map. 
+ * @brief   Defines the maximum amount of items in the trampoline instruction translation map.
  *          Each saved instruction requires one slot in the map.
  */
 #define ZYREX_TRAMPOLINE_INSTRUCTION_COUNT  5
@@ -109,13 +103,13 @@ typedef struct ZyrexTrampolineRegion
 /* ============================================================================================== */
 
 /**
- * @brief   Clips the given @c size if it is larger than the commited memory region that contains 
+ * @brief   Clips the given @c size if it is larger than the commited memory region that contains
  *          @c address.
- *          
+ *
  * @param   address The address.
  * @param   size    Receives the clipped size, if the function succeeded.
- *       
- * @return  @c ZYREX_ERROR_SUCCESS if succeeded, or an other zyrex status code, if not.   
+ *
+ * @return  @c ZYREX_ERROR_SUCCESS if succeeded, or an other zyrex status code, if not.
  *
  * This method ensures no invalid memory gets accessed.
  */
@@ -132,7 +126,7 @@ static ZyrexStatus ZyrexClipRegionSize(const void* address, size_t* size)
         *size = 0;
         return ZYREX_ERROR_SUCCESS;
     }
-    size_t usableRegionSize = (uintptr_t)(address) - 
+    size_t usableRegionSize = (uintptr_t)(address) -
         (uintptr_t)(memInfo.BaseAddress) + memInfo.RegionSize;
     if (*size > usableRegionSize)
     {
@@ -170,7 +164,7 @@ static uintptr_t ZyrexAddressRoundDown(uintptr_t address, const uintptr_t alignm
 }
 
 /**
- * @brief   Searches upwards for a suitable trampoline memory region beginning at the lower address 
+ * @brief   Searches upwards for a suitable trampoline memory region beginning at the lower address
  *          limit and allocates the memory if succeeded.
  *
  * @param   addressLo   The lower address limit.
@@ -179,17 +173,17 @@ static uintptr_t ZyrexAddressRoundDown(uintptr_t address, const uintptr_t alignm
  *
  * @return  @c ZYREX_ERROR_SUCCESS if the function succeeded, an other zyrex status code, if not.
  */
-static ZyrexStatus ZyrexAllocateTrampolineRegionFromLo(uintptr_t addressLo, uintptr_t addressHi, 
+static ZyrexStatus ZyrexAllocateTrampolineRegionFromLo(uintptr_t addressLo, uintptr_t addressHi,
     void** region)
 {
     SYSTEM_INFO systemInfo;
     GetSystemInfo(&systemInfo);
 
     // Guarantee correctly aligned addresses
-    const uint8_t* allocAddressLo = 
+    const uint8_t* allocAddressLo =
         (const uint8_t*)ZyrexAddressRoundUp(addressLo, systemInfo.dwAllocationGranularity);
-    const uint8_t* allocAddressHi = 
-        (const uint8_t*)ZyrexAddressRoundDown(addressHi, systemInfo.dwAllocationGranularity); 
+    const uint8_t* allocAddressHi =
+        (const uint8_t*)ZyrexAddressRoundDown(addressHi, systemInfo.dwAllocationGranularity);
 
     // Find suitable trampoline region
     const uint8_t* allocAddress = allocAddressLo;
@@ -224,14 +218,14 @@ static ZyrexStatus ZyrexAllocateTrampolineRegionFromLo(uintptr_t addressLo, uint
                 return ZYREX_ERROR_SUCCESS;
             }
         }
-        allocAddress = (const uint8_t*)ZyrexAddressRoundUp((uintptr_t)memoryInfo.BaseAddress + 
-            memoryInfo.RegionSize, systemInfo.dwAllocationGranularity);    
+        allocAddress = (const uint8_t*)ZyrexAddressRoundUp((uintptr_t)memoryInfo.BaseAddress +
+            memoryInfo.RegionSize, systemInfo.dwAllocationGranularity);
     }
     return ZYREX_ERROR_TRAMPOLINE_ADDRESS;
 }
 
 /**
- * @brief   Searches downwards for a suitable trampoline memory region beginning at the upper 
+ * @brief   Searches downwards for a suitable trampoline memory region beginning at the upper
  *          address limit and allocates the memory if succeeded.
  *
  * @param   addressLo   The lower address limit.
@@ -247,10 +241,10 @@ static ZyrexStatus ZyrexAllocateTrampolineRegionFromHi(uintptr_t addressLo, uint
     GetSystemInfo(&systemInfo);
 
     // Guarantee correctly aligned addresses
-    const uint8_t* allocAddressLo = 
+    const uint8_t* allocAddressLo =
         (const uint8_t*)ZyrexAddressRoundUp(addressLo, systemInfo.dwAllocationGranularity);
-    const uint8_t* allocAddressHi = 
-        (const uint8_t*)ZyrexAddressRoundDown(addressHi, systemInfo.dwAllocationGranularity); 
+    const uint8_t* allocAddressHi =
+        (const uint8_t*)ZyrexAddressRoundDown(addressHi, systemInfo.dwAllocationGranularity);
 
     // Find suitable trampoline region
     const uint8_t* allocAddress = allocAddressHi;
@@ -285,8 +279,8 @@ static ZyrexStatus ZyrexAllocateTrampolineRegionFromHi(uintptr_t addressLo, uint
                 return ZYREX_ERROR_SUCCESS;
             }
         }
-        allocAddress = (const uint8_t*)ZyrexAddressRoundUp((uintptr_t)memoryInfo.BaseAddress - 
-            memoryInfo.RegionSize, systemInfo.dwAllocationGranularity);    
+        allocAddress = (const uint8_t*)ZyrexAddressRoundUp((uintptr_t)memoryInfo.BaseAddress -
+            memoryInfo.RegionSize, systemInfo.dwAllocationGranularity);
     }
     return ZYREX_ERROR_TRAMPOLINE_ADDRESS;
 }
@@ -323,7 +317,7 @@ static ZyrexStatus ZyrexChangeRegionProtection(ZyrexTrampolineRegion* region, DW
  *
  * @return  @c ZYREX_ERROR_SUCCESS if the function succeeded, an other zyrex status code, if not.
  *
- * This function searches all existing trampoline regions for a suitable trampoline location or 
+ * This function searches all existing trampoline regions for a suitable trampoline location or
  * tries to allocate a new one.
  */
 static ZyrexStatus ZyrexAcquireTrampoline(const void* codeAddress, ZyrexTrampoline** trampoline)
@@ -335,7 +329,7 @@ static ZyrexStatus ZyrexAcquireTrampoline(const void* codeAddress, ZyrexTrampoli
     {
         if (currentRegion->freeTrampolineCount > 0)
         {
-            const intptr_t currentDistance = 
+            const intptr_t currentDistance =
                 abs((int)((intptr_t)currentRegion - (intptr_t)codeAddress));
             if (currentDistance < 0x7FFFFFFF)
             {
@@ -362,14 +356,14 @@ static ZyrexStatus ZyrexAcquireTrampoline(const void* codeAddress, ZyrexTrampoli
         ZYREX_CHECK(ZyrexChangeRegionProtection(bestRegion, PAGE_EXECUTE_READ));
 
         return ZYREX_ERROR_SUCCESS;
-    } 
+    }
 
     // Allocate a new trampoline region
     SYSTEM_INFO systemInfo;
     GetSystemInfo(&systemInfo);
 
     void* memory;
-    if (ZyrexAllocateTrampolineRegionFromLo((uintptr_t)codeAddress, 
+    if (ZyrexAllocateTrampolineRegionFromLo((uintptr_t)codeAddress,
         (uintptr_t)codeAddress + 0x7FFFFFFF, &memory) != ZYREX_ERROR_SUCCESS)
     {
         ZYREX_CHECK(ZyrexAllocateTrampolineRegionFromHi((uintptr_t)codeAddress,
@@ -380,7 +374,7 @@ static ZyrexStatus ZyrexAcquireTrampoline(const void* codeAddress, ZyrexTrampoli
     newRegion->signature = ZYREX_TRAMPOLINE_REGION_SIGNATURE;
     newRegion->next = g_trampolineRegions;
     newRegion->freeTrampolines = NULL;
-    newRegion->freeTrampolineCount = 
+    newRegion->freeTrampolineCount =
         (systemInfo.dwAllocationGranularity / sizeof(ZyrexTrampoline)) - 2;
     ZyrexTrampoline* trampolines = (ZyrexTrampoline*)newRegion + 1;
     ZyrexTrampoline* nextTrampoline = NULL;
@@ -405,8 +399,8 @@ static ZyrexStatus ZyrexAcquireTrampoline(const void* codeAddress, ZyrexTrampoli
 
 /**
  * @brief   Defines the instruction map.
- *          
- * An instruction map maps the offset of each saved instruction in the original code to the offset 
+ *
+ * An instruction map maps the offset of each saved instruction in the original code to the offset
  * of the corresponding instruction in the trampoline.
  */
 typedef ZyrexInstructionMapItem* ZyrexInstructionMap;
@@ -456,29 +450,37 @@ static ZyrexStatus ZyrexCalcRelativeOffset(const void* instrSource, const void* 
  * @param   target                  The target address.
  * @param   sourceBufferSize        The size of the source buffer.
  * @param   targetBufferSize        The size of the target buffer.
- * @param   detourPayloadSize       The minimum amount of instructions bytes that needs to be 
+ * @param   detourPayloadSize       The minimum amount of instructions bytes that needs to be
  *                                  copied.
- * @param   bytesRead               The actual amount of instruction bytes read from the @c source 
+ * @param   bytesRead               The actual amount of instruction bytes read from the @c source
  *                                  address.
- * @oaram   bytesWritten            The actual amount of instruction bytes written to the @c target 
+ * @oaram   bytesWritten            The actual amount of instruction bytes written to the @c target
  *                                  address.
  * @param   instructionMap          Pointer to a buffer that receives the instruction map.
  * @param   instructionMapCapacity  The capacity of the instruction map.
  * @param   instructionCount        The number of instruction written to the target buffer.
  *
  * @return  @c ZYREX_ERROR_SUCCESS if the function succeeded, an other zyrex status code, if not.
- *          
+ *
  * This function tries to relocate 32-bit relative instructions and automatically enlarges smaller
  * ones.
  */
-static ZyrexStatus ZyrexCopyInstructions(const void* source, void* target, 
-    uint8_t sourceBufferSize, uint8_t targetBufferSize, uint8_t detourPayloadSize, 
-    uint8_t* bytesRead, uint8_t* bytesWritten, ZyrexInstructionMap instructionMap, 
+static ZyrexStatus ZyrexCopyInstructions(const void* source, void* target,
+    uint8_t sourceBufferSize, uint8_t targetBufferSize, uint8_t detourPayloadSize,
+    uint8_t* bytesRead, uint8_t* bytesWritten, ZyrexInstructionMap instructionMap,
     uint8_t instructionMapCapacity, uint8_t* instructionCount)
 {
     assert(source);
     assert(target);
     assert(detourPayloadSize > 0);
+
+    ZYREX_UNUSED_PARAMETER(sourceBufferSize);
+    ZYREX_UNUSED_PARAMETER(targetBufferSize);
+    ZYREX_UNUSED_PARAMETER(bytesRead);
+    ZYREX_UNUSED_PARAMETER(bytesWritten);
+    ZYREX_UNUSED_PARAMETER(instructionMap);
+    ZYREX_UNUSED_PARAMETER(instructionMapCapacity);
+    ZYREX_UNUSED_PARAMETER(instructionCount);
 
 //    // Initialize disassembler
 //    Zydis::InstructionInfo info;
@@ -600,7 +602,7 @@ static ZyrexStatus ZyrexCopyInstructions(const void* source, void* target,
 //                        assert(0);
 //                    }
 //                    int32_t rebasedOffset;
-//                    ZYREX_CHECK(ZyrexCalcRelativeOffset(instrSource + info.length, 
+//                    ZYREX_CHECK(ZyrexCalcRelativeOffset(instrSource + info.length,
 //                        instrTarget + offset + info.length, 0, sourceOffset, &rebasedOffset));
 //                    *(int32_t*)++enlargeTarget = (int32_t)rebasedOffset;
 //                } else
@@ -614,9 +616,9 @@ static ZyrexStatus ZyrexCopyInstructions(const void* source, void* target,
 //                        return ZYREX_ERROR_NOT_HOOKABLE;
 //                    }
 //                    int32_t rebasedOffset;
-//                    ZYREX_CHECK(ZyrexCalcRelativeOffset(instrSource, instrTarget, info.length, 
+//                    ZYREX_CHECK(ZyrexCalcRelativeOffset(instrSource, instrTarget, info.length,
 //                        info.operand[0].lval.sdword, &rebasedOffset));
-//                    *(int32_t*)((uintptr_t)instrTarget + info.operand[0].lvalElementOffset) = 
+//                    *(int32_t*)((uintptr_t)instrTarget + info.operand[0].lvalElementOffset) =
 //                        rebasedOffset;
 //                }
 //            } else
@@ -628,9 +630,9 @@ static ZyrexStatus ZyrexCopyInstructions(const void* source, void* target,
 //                        (info.operand[i].base == Zydis::Register::RIP))
 //                    {
 //                        int32_t rebasedOffset;
-//                        ZYREX_CHECK(ZyrexCalcRelativeOffset(instrSource, instrTarget, info.length, 
+//                        ZYREX_CHECK(ZyrexCalcRelativeOffset(instrSource, instrTarget, info.length,
 //                            info.operand[i].lval.sdword, &rebasedOffset));
-//                        *(int32_t*)((uintptr_t)instrTarget + info.operand[i].lvalElementOffset) = 
+//                        *(int32_t*)((uintptr_t)instrTarget + info.operand[i].lvalElementOffset) =
 //                            rebasedOffset;
 //                        break;
 //                    }
@@ -662,13 +664,14 @@ static ZyrexStatus ZyrexCopyInstructions(const void* source, void* target,
 //            return ZYREX_ERROR_SUCCESS;
 //        }
 //    }
+    return 0;
 }
 
 /* ============================================================================================== */
 /* Exported functions                                                                             */
 /* ============================================================================================== */
 
-ZyrexStatus ZyrexCreateTrampoline(const void* codeAddress, uint8_t detourPayloadSize, 
+ZyrexStatus ZyrexCreateTrampoline(const void* codeAddress, uint8_t detourPayloadSize,
     const void* callbackAddress, const void** trampoline)
 {
     if (!codeAddress  || (detourPayloadSize < 1) || !callbackAddress || !trampoline)
@@ -693,7 +696,7 @@ ZyrexStatus ZyrexCreateTrampoline(const void* codeAddress, uint8_t detourPayload
     {
         if (currentRegion->freeTrampolineCount > 0)
         {
-            const intptr_t currentDistance = 
+            const intptr_t currentDistance =
                 abs((int)((intptr_t)currentRegion - (intptr_t)codeAddress));
             if (currentDistance < 0x7FFFFFFF)
             {
@@ -721,7 +724,7 @@ ZyrexStatus ZyrexCreateTrampoline(const void* codeAddress, uint8_t detourPayload
         GetSystemInfo(&systemInfo);
 
         void* memory;
-        if (ZyrexAllocateTrampolineRegionFromLo((uintptr_t)codeAddress, 
+        if (ZyrexAllocateTrampolineRegionFromLo((uintptr_t)codeAddress,
             (uintptr_t)codeAddress + 0x7FFFFFFF, &memory) != ZYREX_ERROR_SUCCESS)
         {
             ZYREX_CHECK(ZyrexAllocateTrampolineRegionFromHi((uintptr_t)codeAddress,
@@ -732,7 +735,7 @@ ZyrexStatus ZyrexCreateTrampoline(const void* codeAddress, uint8_t detourPayload
         region->signature = ZYREX_TRAMPOLINE_REGION_SIGNATURE;
         region->next = g_trampolineRegions;
         region->freeTrampolines = NULL;
-        region->freeTrampolineCount = 
+        region->freeTrampolineCount =
             (systemInfo.dwAllocationGranularity / sizeof(ZyrexTrampoline)) - 2;
         ZyrexTrampoline* trampolines = (ZyrexTrampoline*)region + 1;
         ZyrexTrampoline* nextTrampoline = NULL;
@@ -765,20 +768,20 @@ ZyrexStatus ZyrexCreateTrampoline(const void* codeAddress, uint8_t detourPayload
     }
     memcpy(&trampolineData->restore, codeAddress, trampolineData->restoreSize);
 
-    ZyrexWriteAbsoluteJump(&trampolineData->code[trampolineData->codeSize], 
+    ZyrexWriteAbsoluteJump(&trampolineData->code[trampolineData->codeSize],
         (uintptr_t)&trampolineData->backjumpAddress);
-    ZyrexWriteAbsoluteJump(&trampolineData->callbackJump, 
+    ZyrexWriteAbsoluteJump(&trampolineData->callbackJump,
         (uintptr_t)&trampolineData->callbackAddress);
 
     trampolineData->callbackAddress = callbackAddress;
-    trampolineData->backjumpAddress = 
+    trampolineData->backjumpAddress =
         (const void*)((uintptr_t)codeAddress + trampolineData->restoreSize);
 
     // Make trampoline region read-only
     ZYREX_CHECK(ZyrexChangeRegionProtection(region, PAGE_EXECUTE_READ));
 
-    if (!FlushInstructionCache(GetCurrentProcess, &trampolineData->code, trampolineData->codeSize) 
-        || !FlushInstructionCache(GetCurrentProcess, &trampolineData->callbackJump, 
+    if (!FlushInstructionCache(GetCurrentProcess(), &trampolineData->code, trampolineData->codeSize)
+        || !FlushInstructionCache(GetCurrentProcess(), &trampolineData->callbackJump,
             sizeof(&trampolineData->callbackJump)))
     {
         ZyrexFreeTrampoline(trampolineData);
@@ -798,13 +801,13 @@ ZyrexStatus ZyrexFreeTrampoline(const void* trampoline)
     SYSTEM_INFO systemInfo;
     GetSystemInfo(&systemInfo);
 
-    ZyrexTrampolineRegion* region = (ZyrexTrampolineRegion*)((uintptr_t)trampoline 
+    ZyrexTrampolineRegion* region = (ZyrexTrampolineRegion*)((uintptr_t)trampoline
         & ~((uintptr_t)systemInfo.dwAllocationGranularity - 1));
     if (region->signature != ZYREX_TRAMPOLINE_REGION_SIGNATURE)
     {
         return ZYREX_ERROR_INVALID_PARAMETER;
     }
-    
+
     // Enable write access to the trampoline regions
     ZYREX_CHECK(ZyrexChangeRegionProtection(region, PAGE_EXECUTE_READWRITE));
 
@@ -813,7 +816,7 @@ ZyrexStatus ZyrexFreeTrampoline(const void* trampoline)
     region->freeTrampolines = trampolineData;
     region->freeTrampolineCount++;
 
-    if (region->freeTrampolineCount == 
+    if (region->freeTrampolineCount ==
         (systemInfo.dwAllocationGranularity / sizeof(ZyrexTrampoline)) - 1)
     {
         if (g_trampolineRegions == region)
@@ -872,14 +875,14 @@ ZyrexStatus ZyrexRestoreCodeFromTrampoline(const void* trampoline)
     const ZyrexTrampoline* trampolineData = (ZyrexTrampoline*)trampoline;
     void* codeAddress = (uint8_t*)trampolineData->backjumpAddress - trampolineData->restoreSize;
     DWORD oldProtection;
-    if (!VirtualProtect(codeAddress, trampolineData->restoreSize, PAGE_EXECUTE_READWRITE, 
+    if (!VirtualProtect(codeAddress, trampolineData->restoreSize, PAGE_EXECUTE_READWRITE,
         &oldProtection))
     {
         return ZYREX_ERROR_SYSTEMCALL;
     }
     memcpy(codeAddress, &trampolineData->restore, trampolineData->restoreSize);
     if (!VirtualProtect(codeAddress, trampolineData->restoreSize, oldProtection, &oldProtection) ||
-        !FlushInstructionCache(GetCurrentProcess, codeAddress, trampolineData->restoreSize))
+        !FlushInstructionCache(GetCurrentProcess(), codeAddress, trampolineData->restoreSize))
     {
         return ZYREX_ERROR_SYSTEMCALL;
     }
@@ -888,7 +891,7 @@ ZyrexStatus ZyrexRestoreCodeFromTrampoline(const void* trampoline)
 
 /* ---------------------------------------------------------------------------------------------- */
 
-ZyrexStatus ZyrexInstructionAddressFromCode(const void* trampoline, 
+ZyrexStatus ZyrexInstructionAddressFromCode(const void* trampoline,
     uintptr_t addressOfCodeInstruction, uintptr_t* addressOfTrampolineInstruction)
 {
     if (!trampoline)
@@ -900,19 +903,19 @@ ZyrexStatus ZyrexInstructionAddressFromCode(const void* trampoline,
     ZyrexInstructionMap map = trampolineData->instructionMap;
     for (unsigned i = 0; i < trampolineData->instructionCount; ++i)
     {
-        if ((uintptr_t)trampolineData->backjumpAddress - trampolineData->restoreSize + 
+        if ((uintptr_t)trampolineData->backjumpAddress - trampolineData->restoreSize +
             map->offsetCode == addressOfCodeInstruction)
         {
-            *addressOfTrampolineInstruction = 
+            *addressOfTrampolineInstruction =
                 (uintptr_t)trampolineData->code + map->offsetTrampoline;
             return ZYREX_ERROR_SUCCESS;
         }
     }
 
-    return ZYREX_ERROR_NOT_FOUND;    
+    return ZYREX_ERROR_NOT_FOUND;
 }
 
-ZyrexStatus ZyrexInstructionAddressFromTrampoline(const void* trampoline, 
+ZyrexStatus ZyrexInstructionAddressFromTrampoline(const void* trampoline,
     uintptr_t addressOfTrampolineInstruction, uintptr_t* addressOfCodeInstruction)
 {
     if (!trampoline)
@@ -923,7 +926,7 @@ ZyrexStatus ZyrexInstructionAddressFromTrampoline(const void* trampoline,
 
     if (addressOfTrampolineInstruction == (uintptr_t)&trampolineData->callbackJump)
     {
-        *addressOfCodeInstruction = 
+        *addressOfCodeInstruction =
             (uintptr_t)trampolineData->backjumpAddress - trampolineData->restoreSize;
         return ZYREX_ERROR_SUCCESS;
     }
@@ -931,11 +934,11 @@ ZyrexStatus ZyrexInstructionAddressFromTrampoline(const void* trampoline,
     ZyrexInstructionMap map = trampolineData->instructionMap;
     for (unsigned i = 0; i < trampolineData->instructionCount; ++i)
     {
-        if ((uintptr_t)&trampolineData->code + map->offsetTrampoline == 
+        if ((uintptr_t)&trampolineData->code + map->offsetTrampoline ==
             addressOfTrampolineInstruction)
         {
-            *addressOfCodeInstruction = 
-                (uintptr_t)trampolineData->backjumpAddress - trampolineData->restoreSize + 
+            *addressOfCodeInstruction =
+                (uintptr_t)trampolineData->backjumpAddress - trampolineData->restoreSize +
                     map->offsetCode;
             return ZYREX_ERROR_SUCCESS;
         }
