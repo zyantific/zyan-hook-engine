@@ -9,8 +9,11 @@ project(Zyrex VERSION 1.0)
 # =============================================================================================== #
 
 # Build configuration
-option(BUILD_SHARED_LIBS
-    "Build shared libraries"
+option(ZYREX_BUILD_SHARED_LIB
+    "Build shared library"
+    OFF)
+option(ZYREX_WHOLE_PROGRAM_OPTIMIZATION
+    "Enable whole program optimization"
     OFF)
 option(ZYREX_NO_LIBC
     "Don't use any C standard library functions (for exotic build-envs like kernel drivers)"
@@ -44,7 +47,11 @@ endif ()
 # Library configuration                                                                           #
 # =============================================================================================== #
 
-add_library("Zyrex")
+if (ZYREX_BUILD_SHARED_LIB)
+    add_library("Zyrex" SHARED)
+else ()
+    add_library("Zyrex" STATIC)
+endif ()
 
 option(ZYDIS_MINIMAL_MODE "" ON)
 option(ZYDIS_FEATURE_FORMATTER "" OFF)
@@ -59,6 +66,11 @@ target_include_directories("Zyrex"
     PUBLIC "include" ${PROJECT_BINARY_DIR}
     PRIVATE "src")
 target_compile_definitions("Zyrex" PRIVATE "_CRT_SECURE_NO_WARNINGS" "ZYREX_EXPORTS")
+if (ZYREX_WHOLE_PROGRAM_OPTIMIZATION AND MSVC)
+    set_target_properties("Zyrex" PROPERTIES COMPILE_FLAGS "/GL")
+    set_target_properties("Zyrex" PROPERTIES LINK_FLAGS_RELEASE "/LTCG")
+    set_target_properties("Zyrex" PROPERTIES STATIC_LIBRARY_FLAGS_RELEASE "/LTCG")
+endif ()
 generate_export_header("Zyrex" BASE_NAME "ZYREX" EXPORT_FILE_NAME "ZyrexExportConfig.h")
 
 if (ZYREX_NO_LIBC)
@@ -78,7 +90,7 @@ target_sources("Zyrex"
         "src/Utils.c"
         "src/Zyrex.c")
 
-if (BUILD_SHARED_LIBS AND WIN32)
+if (ZYREX_BUILD_SHARED_LIB AND WIN32)
     target_sources("Zyrex" PRIVATE "src/VersionInfo.rc")
 endif ()
 
@@ -98,4 +110,8 @@ if (ZYREX_BUILD_EXAMPLES)
     target_link_libraries("InlineHook" "Zyrex")
     set_target_properties("InlineHook" PROPERTIES FOLDER "Examples/InlineHook")
     target_compile_definitions("InlineHook" PRIVATE "_CRT_SECURE_NO_WARNINGS")
+    if (ZYREX_WHOLE_PROGRAM_OPTIMIZATION AND MSVC)
+        set_target_properties("InlineHook" PROPERTIES COMPILE_FLAGS "/GL")
+        set_target_properties("InlineHook" PROPERTIES STATIC_LIBRARY_FLAGS_RELEASE "/LTCG")
+    endif ()
 endif ()
