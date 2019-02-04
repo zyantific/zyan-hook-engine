@@ -27,9 +27,8 @@
 #ifndef ZYREX_UTILS_H
 #define ZYREX_UTILS_H
 
-#include <stdint.h>
-#include <string.h>
-#include <Zyrex/Defines.h>
+#include <Zycore/Defines.h>
+#include <Zycore/Types.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -39,71 +38,70 @@ extern "C" {
 /* Jumps                                                                                          */
 /* ============================================================================================== */
 
-/**
- * @brief   Defines the size of a 32 bit relative jump.
- */
-#define ZYREX_SIZEOF_JUMP_RELATIVE32 5
+    #define ZYREX_SIZEOF_JUMP_RELATIVE 5
+#define ZYREX_SIZEOF_JUMP_ABSOLUTE 6
 
 /**
- * @brief   Defines the size of an absolute jump.
- */
-#define ZYREX_SIZEOF_JUMP_ABSOLUTE   6
-
-/* ---------------------------------------------------------------------------------------------- */
-
-/**
- * @brief   Writes a 32 bit relative jump instruction at the given @c address.
+ * @brief   Writes a relative jump at the given `address`.
  *
- * @param   address     The address of the jump instruction.
- * @param   destination The desired destination address.
- *                      
- * This function does not perform any checks, like if the target destination is within the range 
- * of a 32 bit relative jump.
+ * @param   address     The memory address.
+ * @param   destination The absolute destination address of the jump.
+ *
+ * @return  Returns the number of bytes written.
+ *
+ * This function does not perform any checks, like if the target destination is within the range
+ * of a relative jump.
  */
-ZYREX_INLINE void ZyrexWriteJumpRelative32(void* address, uintptr_t destination)
+ZYAN_INLINE ZyanU8 ZyrexWriteRelativeJump(void* address, ZyanUPointer destination)
 {
 #pragma pack(push, 1)
     /**
      * @brief   Represents the assembly equivalent of a 5 byte relative 32 bit jump.
      */
-    typedef struct ZyrexJumpRelative32
+    typedef struct ZyrexJumpRelative32_
     {
-        uint8_t opcodeJMP;
-        int32_t distance;
+        ZyanU8 opcode;
+        ZyanI32 distance;
     } ZyrexJumpRelative32;
 #pragma pack(pop)
+
+    ZYAN_STATIC_ASSERT(sizeof(ZyrexJumpRelative32) == 5);
+
     ZyrexJumpRelative32* jump = (ZyrexJumpRelative32*)address;
-    jump->opcodeJMP = 0xE9;
-    jump->distance = (int32_t)(destination - ((uintptr_t)address + 5));
+    jump->opcode   = 0xE9;
+    jump->distance =
+        (ZyanI32)(destination - ((ZyanUPointer)address + sizeof(ZyrexJumpRelative32)));
 }
 
 /* ---------------------------------------------------------------------------------------------- */
 
 /**
- * @brief	Writes an absolute jump instruction at the given @c address.
- *          
- * @param   address     The address of the jump instruction.
+ * @brief	Writes an absolute indirect jump instruction at the given `address`.
+ *
+ * @param   address     The memory address.
  * @param   destination The memory address that contains the absolute destination for the jump.
  */
-ZYREX_INLINE void ZyrexWriteAbsoluteJump(void* address, uintptr_t destination)
+ZYAN_INLINE void ZyrexWriteAbsoluteJump(void* address, ZyanUPointer destination)
 {
 #pragma pack(push, 1)
     /**
      * @brief   Represents the assembly equivalent of an absolute jump.
      */
-    typedef struct ZyrexJumpAbsolute
+    typedef struct ZyrexJumpAbsolute_
     {
-        uint8_t opcodeJMP[2];
-        int32_t m_offset;
+        ZyanU16 opcode;
+        ZyanI32 address;
     } ZyrexJumpAbsolute;
 #pragma pack(pop)
+
+    ZYAN_STATIC_ASSERT(sizeof(ZyrexJumpAbsolute) == 6);
+
     ZyrexJumpAbsolute* jump = (ZyrexJumpAbsolute*)address;
-    jump->opcodeJMP[0] = 0xFF; 
-    jump->opcodeJMP[1] = 0x25;
+    jump->opcode = 0x25FF;
 #ifdef ZYREX_X86
-    jump->m_offset = destination;
+    jump->address = destination;
 #else
-    jump->m_offset = (int32_t)(destination - ((uintptr_t)address + 6));
+    jump->address = (int32_t)(destination - ((uintptr_t)address + 6));
 #endif
 }
 

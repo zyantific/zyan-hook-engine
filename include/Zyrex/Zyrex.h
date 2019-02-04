@@ -28,8 +28,9 @@
 #define ZYREX_H
 
 #include <Windows.h>
-#include <zyrex/Defines.h>
-#include <zyrex/Status.h>
+#include <Zycore/Defines.h>
+#include <Zycore/Status.h>
+#include <ZyrexExportConfig.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -40,7 +41,7 @@ extern "C" {
  *
  * @return  @c ZYREX_ERROR_SUCCESS if the function succeeded, an other zyrex status code, if not.
  */
-ZYREX_EXPORT ZyrexStatus ZyrexTransactionBegin();
+ZYREX_EXPORT ZyanStatus ZyrexTransactionBegin();
 
 /**
  * @brief   Adds a thread to the update list.
@@ -49,7 +50,7 @@ ZYREX_EXPORT ZyrexStatus ZyrexTransactionBegin();
  *
  * @return  @c ZYREX_ERROR_SUCCESS if the function succeeded, an other zyrex status code, if not.
  */
-ZYREX_EXPORT ZyrexStatus ZyrexUpdateThread(HANDLE threadHandle);
+ZYREX_EXPORT ZyanStatus ZyrexUpdateThread(HANDLE threadHandle);
 
 /**
  * @brief   Attaches an inline hook.
@@ -60,7 +61,7 @@ ZYREX_EXPORT ZyrexStatus ZyrexUpdateThread(HANDLE threadHandle);
  *
  * @return  @c ZYREX_ERROR_SUCCESS if the function succeeded, an other zyrex status code, if not.
  */
-ZYREX_EXPORT ZyrexStatus ZyrexAttachInlineHook(const void** address, const void* callback);
+ZYREX_EXPORT ZyanStatus ZyrexAttachInlineHook(const void** address, const void* callback);
 
 /**
  * @brief   Attaches an exception hook.
@@ -71,7 +72,7 @@ ZYREX_EXPORT ZyrexStatus ZyrexAttachInlineHook(const void** address, const void*
  *
  * @return  @c ZYREX_ERROR_SUCCESS if the function succeeded, an other zyrex status code, if not.
  */
-ZYREX_EXPORT ZyrexStatus ZyrexAttachExceptionHook(const void** address, const void* callback);
+ZYREX_EXPORT ZyanStatus ZyrexAttachExceptionHook(const void** address, const void* callback);
 
 /**
  * @brief   Attaches a context hook.
@@ -82,7 +83,7 @@ ZYREX_EXPORT ZyrexStatus ZyrexAttachExceptionHook(const void** address, const vo
  *
  * @return  @c ZYREX_ERROR_SUCCESS if the function succeeded, an other zyrex status code, if not.
  */
-ZYREX_EXPORT ZyrexStatus ZyrexAttachContextHook(const void** address, const void* callback);
+ZYREX_EXPORT ZyanStatus ZyrexAttachContextHook(const void** address, const void* callback);
 
 // TODO: IAT/EAT, VTable, ..
 
@@ -91,7 +92,7 @@ ZYREX_EXPORT ZyrexStatus ZyrexAttachContextHook(const void** address, const void
  *
  * @return  @c ZYREX_ERROR_SUCCESS if the function succeeded, an other zyrex status code, if not.
  */
-ZYREX_EXPORT ZyrexStatus ZyrexTransactionCommit();
+ZYREX_EXPORT ZyanStatus ZyrexTransactionCommit();
 
 /**
  * @brief   Commits the current transaction.
@@ -100,14 +101,14 @@ ZYREX_EXPORT ZyrexStatus ZyrexTransactionCommit();
  *
  * @return  @c ZYREX_ERROR_SUCCESS if the function succeeded, an other zyrex status code, if not.
  */
-ZYREX_EXPORT ZyrexStatus ZyrexTransactionCommitEx(const void** failedOperation);
+ZYREX_EXPORT ZyanStatus ZyrexTransactionCommitEx(const void** failedOperation);
 
 /**
  * @brief   Cancels the current transaction.
  *
  * @return  @c ZYREX_ERROR_SUCCESS if the function succeeded, an other zyrex status code, if not.
  */
-ZYREX_EXPORT ZyrexStatus ZyrexTransactionAbort();
+ZYREX_EXPORT ZyanStatus ZyrexTransactionAbort();
 
 #ifdef __cplusplus
 }

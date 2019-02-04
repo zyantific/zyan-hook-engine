@@ -30,15 +30,54 @@
  */
 
 #include <Zyrex/Zyrex.h>
+#include <Zyrex/Internal/Trampoline.h>
+#include <stdio.h>
+#include <Windows.h>
 
 /* ============================================================================================== */
 /* Entry point                                                                                    */
 /* ============================================================================================== */
 
+typedef int (*functype)();
+
+const void* trampoline = NULL;
+
+int xxx()
+{
+    int v = 0;
+    for (int i = 0; i < 3; ++i)
+    {
+        v++;
+    }
+    return 1337;
+}
+
+int callback()
+{
+    return ((functype)trampoline)() + 1;
+}
+
 int main()
 {
     ZyrexTransactionBegin();
-    ZyrexTransactionAbort();
+    //ZyrexTransactionAbort();
+
+    const ZyanStatus status =
+        ZyrexTrampolineCreate((const void*)&xxx, 5, (const void*)&callback, &trampoline);
+    if (ZYAN_SUCCESS(status))
+    {
+
+        DWORD old;
+        VirtualProtect((LPVOID)&xxx, 5, PAGE_EXECUTE_READWRITE, &old);
+        uint8_t* t = (uint8_t*)&xxx;
+        *t++ = 0xE9;
+
+        uintptr_t x = (const uint8_t*)&callback - (const uint8_t*)&xxx - 5;
+
+        *(uint32_t*)t = (uint32_t)x;
+
+        printf("%d", xxx());
+    }
 
     return 0;
 }

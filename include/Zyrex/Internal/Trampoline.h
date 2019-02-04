@@ -27,20 +27,38 @@
 #ifndef ZYREX_TRAMPOLINE_H
 #define ZYREX_TRAMPOLINE_H
 
-#include <stdint.h>
+#include <Zycore/Types.h>
 #include <Zyrex/Status.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /* ============================================================================================== */
 /* Structs                                                                                        */
 /* ============================================================================================== */
 
-typedef struct ZyrexTrampolineInfo
+/**
+ * @brief   Defines the `ZyrexTrampolineInfo` struct.
+ */
+typedef struct ZyrexTrampolineInfo_
 {
-    const void* addressOfCode;
-    const void* addressOfCallback;
-    const void* addressOfCodeTrampoline;
-    const void* addressOfCallbackTrampoline;
-    uint8_t numberOfSavedInstructionBytes;
+    /**
+     * @brief   The address of the hooked function.
+     */
+    const void* address_of_code;
+    /**
+     * @brief   The address of the callback function.
+     */
+    const void* address_of_callback;
+    /**
+     * @brief   A pointer to the first instruction of the trampoline.
+     */
+    const void* address_of_trampoline_code;
+    /**
+     * @brief   The number of instruction bytes saved from the hooked function.
+     */
+    ZyanU8 saved_instruction_bytes;
 } ZyrexTrampolineInfo;
 
 /* ============================================================================================== */
@@ -50,81 +68,30 @@ typedef struct ZyrexTrampolineInfo
 /**
  * @brief   Creates a new trampoline.
  *
- * @param   codeAddress         The code address.
- * @param   detourPayloadSize   The size of the detour payload. This argument specifies the minimum 
- *                              amount of instruction bytes that needs to be saved to the 
- *                              trampoline.
- * @param   callbackAddress     The callback address.
- * @param   trampoline          Receives a pointer to the newly created trampoline.
+ * @param   address     The address of the function to create the trampoline for.
+ * @param   size        The minimum size of the trampoline code.
+ *                      This argument specifies the minimum amount of instruction bytes that need
+ *                      to be saved (moved) to the trampoline.
+ * @param   callback    The callback address.
+ * @param   trampoline  Receives a pointer to the new trampoline.
  *
- * @return  @c ZYREX_ERROR_SUCCESS if the function succeeded, an other zyrex status code, if not.
+ * @return  A zyan status code.
  */
-ZyrexStatus ZyrexCreateTrampoline(const void* codeAddress, uint8_t detourPayloadSize, 
-    const void* callbackAddress, const void** trampoline);
+ZyanStatus ZyrexTrampolineCreate(const void* address, ZyanUSize size, const void* callback,
+    const void** trampoline);
 
 /**
  * @brief   Destroys the given trampoline.
  *
  * @param   trampoline  The trampoline.
  *
- * @return  @c ZYREX_ERROR_SUCCESS if the function succeeded, an other zyrex status code, if not.
+ * @return  A zyan status code.
  */
-ZyrexStatus ZyrexFreeTrampoline(const void* trampoline);
-
-/* ---------------------------------------------------------------------------------------------- */
-
-/**
- * @brief   Queries basic information about the given @c trampoline.
- *
- * @param   trampoline  The trampoline.
- * @param   info        Pointer to the @c ZyrexTrampolineInfo struct that receives the trampoline 
- *                      information.
- *
- * @return  @c ZYREX_ERROR_SUCCESS if the function succeeded, an other zyrex status code, if not.
- */
-ZyrexStatus ZyrexGetTrampolineInfo(const void* trampoline, ZyrexTrampolineInfo* info);
-
-/* ---------------------------------------------------------------------------------------------- */
-
-/**
- * @brief   Restores all saved instructions from the given @c trampoline and flushes the instruction 
- *          cache.
- *
- * @param   trampoline  The trampoline.
- * @param   codeAddress The code address.
- *
- * @return  @c ZYREX_ERROR_SUCCESS if the function succeeded, an other zyrex status code, if not.
- */
-ZyrexStatus ZyrexRestoreCodeFromTrampoline(const void* trampoline);
-
-/* ---------------------------------------------------------------------------------------------- */
-
-/**
- * @brief   Translates the given instruction address to the corresponding address in the trampoline.
- *
- * @param   trampoline                      The trampoline.
- * @param   addressOfCodeInstruction        The address of the instruction.
- * @param   addressOfTrampolineInstruction  Receives the address of the corresponding instruction
- *                                          in the trampoline.
- *
- * @return  @c ZYREX_ERROR_SUCCESS if the function succeeded, an other zyrex status code, if not.
- */
-ZyrexStatus ZyrexInstructionAddressFromCode(const void* trampoline, 
-    uintptr_t addressOfCodeInstruction, uintptr_t* addressOfTrampolineInstruction);
-
-/**
- * @brief   Translates the given instruction address to the corresponding address in the code.
- *
- * @param   trampoline                      The trampoline.
- * @param   addressOfTrampolineInstruction  The address of the instruction.
- * @param   addressOfCodeInstruction        Receives the address of the corresponding instruction
- *                                          in the code.
- *
- * @return  @c ZYREX_ERROR_SUCCESS if the function succeeded, an other zyrex status code, if not.
- */
-ZyrexStatus ZyrexInstructionAddressFromTrampoline(const void* trampoline, 
-    uintptr_t addressOfTrampolineInstruction, uintptr_t* addressOfCodeInstruction);
+ZyanStatus ZyrexTrampolineFree(const void* trampoline);
 
 /* ============================================================================================== */
 
+#ifdef __cplusplus
+}
+#endif
 #endif /* ZYREX_TRAMPOLINE_H */

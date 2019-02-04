@@ -70,7 +70,7 @@ typedef struct ZyrexInlineOperation_
 /* ============================================================================================== */
 
 static LONG         g_transactionThreadId   = 0;
-static ZyrexStatus  g_transactionError      = ZYREX_ERROR_SUCCESS;
+static ZyanStatus   g_transactionError      = ZYAN_STATUS_SUCCESS;
 static void*        g_pendingOperations     = NULL;
 static HANDLE*      g_pendingThreads        = NULL;
 static size_t       g_pendingThreadCount    = 0;
@@ -79,32 +79,32 @@ static size_t       g_pendingThreadCount    = 0;
 /* Functions                                                                                      */
 /* ============================================================================================== */
 
-ZyrexStatus ZyrexTransactionBegin()
+ZyanStatus ZyrexTransactionBegin()
 {
-    if (g_transactionThreadId != 0) 
+    if (g_transactionThreadId != 0)
     {
-        return ZYREX_ERROR_INVALID_OPERATION;
+        return ZYAN_STATUS_INVALID_OPERATION;
     }
-    if (InterlockedCompareExchange(&g_transactionThreadId, (LONG)GetCurrentThreadId(), 0) != 0) 
+    if (InterlockedCompareExchange(&g_transactionThreadId, (LONG)GetCurrentThreadId(), 0) != 0)
     {
-        return ZYREX_ERROR_INVALID_OPERATION;
+        return ZYAN_STATUS_INVALID_OPERATION;
     }
-    g_transactionError   = ZYREX_ERROR_SUCCESS;
+    g_transactionError   = ZYAN_STATUS_SUCCESS;
     g_pendingOperations  = NULL;
     g_pendingThreads     = NULL;
     g_pendingThreadCount = 0;
-    return ZYREX_ERROR_SUCCESS;
+    return ZYAN_STATUS_SUCCESS;
 }
 
-ZyrexStatus ZyrexUpdateThread(HANDLE threadHandle)
+ZyanStatus ZyrexUpdateThread(HANDLE threadHandle)
 {
-    if (ZYREX_SUCCESS(g_transactionError)) 
+    if (ZYAN_SUCCESS(g_transactionError))
     {
         return g_transactionError;
     }
-    if (threadHandle == GetCurrentThread()) 
+    if (threadHandle == GetCurrentThread())
     {
-        return ZYREX_ERROR_SUCCESS;
+        return ZYAN_STATUS_SUCCESS;
     }
     const void* memory = realloc(g_pendingThreads, sizeof(HANDLE) * (g_pendingThreadCount + 1));
     if (!memory)
@@ -113,33 +113,33 @@ ZyrexStatus ZyrexUpdateThread(HANDLE threadHandle)
         {
             free(g_pendingThreads);
         }
-        return ZYREX_ERROR_NOT_ENOUGH_MEMORY;
+        return ZYAN_STATUS_NOT_ENOUGH_MEMORY;
     }
     g_pendingThreads = (HANDLE*)memory;
     g_pendingThreads[g_pendingThreadCount++] = threadHandle;
     if (SuspendThread(threadHandle) == (DWORD)-1)
     {
-        return ZYREX_ERROR_SYSTEMCALL;
+        return ZYAN_STATUS_BAD_SYSTEMCALL;
     }
-    return ZYREX_ERROR_SUCCESS;
+    return ZYAN_STATUS_SUCCESS;
 }
 
-ZyrexStatus ZyrexTransactionCommit()
+ZyanStatus ZyrexTransactionCommit()
 {
     return ZyrexTransactionCommitEx(NULL);
 }
 
-ZyrexStatus ZyrexTransactionCommitEx(const void** failedOperation)
+ZyanStatus ZyrexTransactionCommitEx(const void** failedOperation)
 {
-    ZYREX_UNUSED_PARAMETER(failedOperation);
-    return ZYREX_ERROR_SUCCESS;
+    ZYAN_UNUSED(failedOperation);
+    return ZYAN_STATUS_SUCCESS;
 }
 
-ZyrexStatus ZyrexTransactionAbort()
+ZyanStatus ZyrexTransactionAbort()
 {
-    if (g_transactionThreadId != (LONG)GetCurrentThreadId()) 
+    if (g_transactionThreadId != (LONG)GetCurrentThreadId())
     {
-        return ZYREX_ERROR_INVALID_OPERATION;
+        return ZYAN_STATUS_INVALID_OPERATION;
     }
     if (g_pendingThreads)
     {
@@ -147,7 +147,7 @@ ZyrexStatus ZyrexTransactionAbort()
     }
     // ..
     g_transactionThreadId = 0;
-    return ZYREX_ERROR_SUCCESS;
+    return ZYAN_STATUS_SUCCESS;
 }
 
 /* ============================================================================================== */

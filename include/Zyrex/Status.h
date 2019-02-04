@@ -24,104 +24,49 @@
 
 ***************************************************************************************************/
 
+/**
+ * @file
+ * @brief   Status code definitions and check macros.
+ */
+
 #ifndef ZYREX_STATUS_H
 #define ZYREX_STATUS_H
 
-#include <stdint.h>
+#include <Zycore/Status.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /* ============================================================================================== */
-/* Common Types                                                                                   */
+/* Status codes                                                                                   */
 /* ============================================================================================== */
+
+/* ---------------------------------------------------------------------------------------------- */
+/* Module IDs                                                                                     */
+/* ---------------------------------------------------------------------------------------------- */
 
 /**
- * @brief   Defines an alias representing a zyrex status code.
+ * @brief   The zydis module id.
  */
-typedef uint32_t ZyrexStatus;
+#define ZYAN_MODULE_ZYREX   0x200
 
-/* ============================================================================================== */
-/* Status Codes                                                                                   */
-/* ============================================================================================== */
+/* ---------------------------------------------------------------------------------------------- */
+/* Status codes                                                                                   */
+/* ---------------------------------------------------------------------------------------------- */
 
 /**
- * @brief   Values that represent zyrex status codes.
+ * @brief   Could not allocate a suitable trampoline memory region.
  */
-typedef enum ZyrexStatusCode
-{
-    /**
-     * @brief   No error occured.
-     */
-    ZYREX_ERROR_SUCCESS,
-    /**
-     * @brief   An invalid parameter was passed to a function.
-     */
-    ZYREX_ERROR_INVALID_PARAMETER,
-    /**
-     * @brief   A caller tried to perform an invalid operation.
-     */
-    ZYREX_ERROR_INVALID_OPERATION,
-    /**
-     * @brief   The application is out of memory.
-     */
-    ZYREX_ERROR_NOT_ENOUGH_MEMORY,
-    /**
-     * @brief   An error occured during a system function call.
-     */
-    ZYREX_ERROR_SYSTEMCALL,
-    /**
-     * @brief   A search operation could not find a specific element.
-     */
-    ZYREX_ERROR_NOT_FOUND,
-    /**
-     * @brief   Could not find a suitable trampoline memory region.
-     */
-    ZYREX_ERROR_TRAMPOLINE_ADDRESS,
-    /**
-     * @brief   An error occured while disassembling an instruction or code block.
-     */
-    ZYREX_ERROR_DISASSEMBLER,
-    /**
-     * @brief   A relative instruction could not get enlarged.
-     */
-    ZYREX_ERROR_NOT_ENLARGEABLE,
-    /**
-     * @brief   A relative instruction could not get relocated.
-     */
-    ZYREX_ERROR_NOT_RELOCATEABLE,
-    /**
-     * @brief   The target code is not hookable.
-     */
-    ZYREX_ERROR_NOT_HOOKABLE
-} ZyrexStatusCode;
+#define ZYREX_STATUS_COULD_NOT_ALLOCATE_TRAMPOLINE \
+    ZYAN_MAKE_STATUS(1, ZYAN_MODULE_ZYDIS, 0x00)
 
-/* ============================================================================================== */
-/* Macros                                                                                         */
-/* ============================================================================================== */
-
-/**
- * @brief   Checks a zyrex status code.
- *
- * @param   status  The zyrex status code.
- */
-#define ZYREX_SUCCESS(status) (status == ZYREX_ERROR_SUCCESS)
-
-/**
- * @brief   Checks a zyrex status code and returns it, if an error occured.
- *
- * @param   status  The zyrex status code.
- */
-#define ZYREX_CHECK(status) \
-    if (!ZYREX_SUCCESS(status)) \
-    { \
-        return status; \
-    }
+/* ---------------------------------------------------------------------------------------------- */
 
 /* ============================================================================================== */
 
 #ifdef __cplusplus
 }
 #endif
-#endif /*ZYREX_STATUS_H */
+
+#endif /* ZYREX_STATUS_H */
