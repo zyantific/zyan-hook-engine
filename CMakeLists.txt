@@ -40,24 +40,31 @@ target_include_directories("Zyrex"
     PUBLIC "include" ${PROJECT_BINARY_DIR}
     PRIVATE "src")
 target_compile_definitions("Zyrex" PRIVATE "_CRT_SECURE_NO_WARNINGS" "ZYREX_EXPORTS")
+zyan_set_common_flags("Zyrex")
 zyan_maybe_enable_wpo_for_lib("Zyrex")
 generate_export_header("Zyrex" BASE_NAME "ZYREX" EXPORT_FILE_NAME "ZyrexExportConfig.h")
 
 target_sources("Zyrex"
     PRIVATE
+        "${CMAKE_CURRENT_LIST_DIR}/include/Zyrex/Barrier.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Zyrex/InlineHook.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Zyrex/Status.h"
+        "${CMAKE_CURRENT_LIST_DIR}/include/Zyrex/Transaction.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Zyrex/Zyrex.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Zyrex/Internal/Trampoline.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Zyrex/Internal/Utils.h"
+        "src/Barrier.c"
         "src/InlineHook.c"
         "src/Trampoline.c"
+        "src/Transaction.c"
         "src/Utils.c"
         "src/Zyrex.c")
 
 if (ZYREX_BUILD_SHARED_LIB AND WIN32)
-    target_sources("Zyrex" PRIVATE "src/VersionInfo.rc")
+    target_sources("Zyrex" PRIVATE "resources/VersionInfo.rc")
 endif ()
+
+zyan_set_source_group("Zyrex")
 
 # TODO: Install CMake config.
 install(TARGETS "Zyrex"

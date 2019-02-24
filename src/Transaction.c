@@ -27,10 +27,10 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <Windows.h>
-#include <Zyrex/Zyrex.h>
+#include <Zyrex/Transaction.h>
 
 /* ============================================================================================== */
-/* Structs                                                                                        */
+/* Enums and types                                                                                */
 /* ============================================================================================== */
 
 typedef uint8_t ZyrexOperationType;
@@ -66,58 +66,58 @@ typedef struct ZyrexInlineOperation_
 } ZyrexInlineOperation;
 
 /* ============================================================================================== */
-/* Static Variables                                                                               */
+/* Globals                                                                                        */
 /* ============================================================================================== */
 
-static LONG         g_transactionThreadId   = 0;
-static ZyanStatus   g_transactionError      = ZYAN_STATUS_SUCCESS;
-static void*        g_pendingOperations     = NULL;
-static HANDLE*      g_pendingThreads        = NULL;
-static size_t       g_pendingThreadCount    = 0;
+static LONG         g_transaction_thread_id = 0;
+static ZyanStatus   g_transaction_error     = ZYAN_STATUS_SUCCESS;
+static void*        g_pending_operations    = NULL;
+static HANDLE*      g_pending_threads       = NULL;
+static size_t       g_pending_thread_count  = 0;
 
 /* ============================================================================================== */
-/* Functions                                                                                      */
+/* Exported functions                                                                             */
 /* ============================================================================================== */
 
 ZyanStatus ZyrexTransactionBegin()
 {
-    if (g_transactionThreadId != 0)
+    if (g_transaction_thread_id != 0)
     {
         return ZYAN_STATUS_INVALID_OPERATION;
     }
-    if (InterlockedCompareExchange(&g_transactionThreadId, (LONG)GetCurrentThreadId(), 0) != 0)
+    if (InterlockedCompareExchange(&g_transaction_thread_id, (LONG)GetCurrentThreadId(), 0) != 0)
     {
         return ZYAN_STATUS_INVALID_OPERATION;
     }
-    g_transactionError   = ZYAN_STATUS_SUCCESS;
-    g_pendingOperations  = NULL;
-    g_pendingThreads     = NULL;
-    g_pendingThreadCount = 0;
+    g_transaction_error   = ZYAN_STATUS_SUCCESS;
+    g_pending_operations  = NULL;
+    g_pending_threads     = NULL;
+    g_pending_thread_count = 0;
     return ZYAN_STATUS_SUCCESS;
 }
 
-ZyanStatus ZyrexUpdateThread(HANDLE threadHandle)
+ZyanStatus ZyrexUpdateThread(HANDLE thread_handle)
 {
-    if (ZYAN_SUCCESS(g_transactionError))
+    if (ZYAN_SUCCESS(g_transaction_error))
     {
-        return g_transactionError;
+        return g_transaction_error;
     }
-    if (threadHandle == GetCurrentThread())
+    if (thread_handle == GetCurrentThread())
     {
         return ZYAN_STATUS_SUCCESS;
     }
-    const void* memory = realloc(g_pendingThreads, sizeof(HANDLE) * (g_pendingThreadCount + 1));
+    const void* memory = realloc(g_pending_threads, sizeof(HANDLE) * (g_pending_thread_count + 1));
     if (!memory)
     {
-        if (g_pendingThreads)
+        if (g_pending_threads)
         {
-            free(g_pendingThreads);
+            free(g_pending_threads);
         }
         return ZYAN_STATUS_NOT_ENOUGH_MEMORY;
     }
-    g_pendingThreads = (HANDLE*)memory;
-    g_pendingThreads[g_pendingThreadCount++] = threadHandle;
-    if (SuspendThread(threadHandle) == (DWORD)-1)
+    g_pending_threads = (HANDLE*)memory;
+    g_pending_threads[g_pending_thread_count++] = thread_handle;
+    if (SuspendThread(thread_handle) == (DWORD)-1)
     {
         return ZYAN_STATUS_BAD_SYSTEMCALL;
     }
@@ -129,24 +129,24 @@ ZyanStatus ZyrexTransactionCommit()
     return ZyrexTransactionCommitEx(NULL);
 }
 
-ZyanStatus ZyrexTransactionCommitEx(const void** failedOperation)
+ZyanStatus ZyrexTransactionCommitEx(const void** failed_operation)
 {
-    ZYAN_UNUSED(failedOperation);
+    ZYAN_UNUSED(failed_operation);
     return ZYAN_STATUS_SUCCESS;
 }
 
 ZyanStatus ZyrexTransactionAbort()
 {
-    if (g_transactionThreadId != (LONG)GetCurrentThreadId())
+    if (g_transaction_thread_id != (LONG)GetCurrentThreadId())
     {
         return ZYAN_STATUS_INVALID_OPERATION;
     }
-    if (g_pendingThreads)
+    if (g_pending_threads)
     {
-        free(g_pendingThreads);
+        free(g_pending_threads);
     }
     // ..
-    g_transactionThreadId = 0;
+    g_transaction_thread_id = 0;
     return ZYAN_STATUS_SUCCESS;
 }
 

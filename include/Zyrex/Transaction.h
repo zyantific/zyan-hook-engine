@@ -24,8 +24,8 @@
 
 ***************************************************************************************************/
 
-#ifndef ZYREX_H
-#define ZYREX_H
+#ifndef ZYREX_TRANSACTION_H
+#define ZYREX_TRANSACTION_H
 
 #include <Windows.h>
 #include <Zycore/Defines.h>
@@ -35,6 +35,14 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/* ============================================================================================== */
+/* Exported functions                                                                             */
+/* ============================================================================================== */
+
+/* ---------------------------------------------------------------------------------------------- */
+/* Transaction                                                                                    */
+/* ---------------------------------------------------------------------------------------------- */
 
 /**
  * @brief   Starts a new transaction.
@@ -46,11 +54,38 @@ ZYREX_EXPORT ZyanStatus ZyrexTransactionBegin();
 /**
  * @brief   Adds a thread to the update list.
  *
- * @param   threadHandle    The handle of the thread.
+ * @param   thread_handle   The handle of the thread.
  *
  * @return  @c ZYREX_ERROR_SUCCESS if the function succeeded, an other zyrex status code, if not.
  */
-ZYREX_EXPORT ZyanStatus ZyrexUpdateThread(HANDLE threadHandle);
+ZYREX_EXPORT ZyanStatus ZyrexUpdateThread(HANDLE thread_handle);
+
+/**
+ * @brief   Commits the current transaction.
+ *
+ * @return  @c ZYREX_ERROR_SUCCESS if the function succeeded, an other zyrex status code, if not.
+ */
+ZYREX_EXPORT ZyanStatus ZyrexTransactionCommit();
+
+/**
+ * @brief   Commits the current transaction.
+ *
+ * @param   failed_operation    Receives a pointer to the operation that failed the transaction.
+ *
+ * @return  @c ZYREX_ERROR_SUCCESS if the function succeeded, an other zyrex status code, if not.
+ */
+ZYREX_EXPORT ZyanStatus ZyrexTransactionCommitEx(const void** failed_operation);
+
+/**
+ * @brief   Cancels the current transaction.
+ *
+ * @return  @c ZYREX_ERROR_SUCCESS if the function succeeded, an other zyrex status code, if not.
+ */
+ZYREX_EXPORT ZyanStatus ZyrexTransactionAbort();
+
+/* ---------------------------------------------------------------------------------------------- */
+/* Hook installation                                                                              */
+/* ---------------------------------------------------------------------------------------------- */
 
 /**
  * @brief   Attaches an inline hook.
@@ -87,30 +122,17 @@ ZYREX_EXPORT ZyanStatus ZyrexAttachContextHook(const void** address, const void*
 
 // TODO: IAT/EAT, VTable, ..
 
-/**
- * @brief   Commits the current transaction.
- *
- * @return  @c ZYREX_ERROR_SUCCESS if the function succeeded, an other zyrex status code, if not.
- */
-ZYREX_EXPORT ZyanStatus ZyrexTransactionCommit();
+/* ---------------------------------------------------------------------------------------------- */
+/* Hook removal                                                                                   */
+/* ---------------------------------------------------------------------------------------------- */
 
-/**
- * @brief   Commits the current transaction.
- *
- * @param   failedOperation Receives a pointer to the operation that failed the transaction.
- *
- * @return  @c ZYREX_ERROR_SUCCESS if the function succeeded, an other zyrex status code, if not.
- */
-ZYREX_EXPORT ZyanStatus ZyrexTransactionCommitEx(const void** failedOperation);
+// TODO:
 
-/**
- * @brief   Cancels the current transaction.
- *
- * @return  @c ZYREX_ERROR_SUCCESS if the function succeeded, an other zyrex status code, if not.
- */
-ZYREX_EXPORT ZyanStatus ZyrexTransactionAbort();
+/* ---------------------------------------------------------------------------------------------- */
+
+/* ============================================================================================== */
 
 #ifdef __cplusplus
 }
 #endif
-#endif /* ZYREX_H */
+#endif /* ZYREX_TRANSACTION_H */

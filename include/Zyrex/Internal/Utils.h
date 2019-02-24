@@ -38,7 +38,7 @@ extern "C" {
 /* Jumps                                                                                          */
 /* ============================================================================================== */
 
-    #define ZYREX_SIZEOF_JUMP_RELATIVE 5
+#define ZYREX_SIZEOF_JUMP_RELATIVE 5
 #define ZYREX_SIZEOF_JUMP_ABSOLUTE 6
 
 /**
@@ -47,12 +47,10 @@ extern "C" {
  * @param   address     The memory address.
  * @param   destination The absolute destination address of the jump.
  *
- * @return  Returns the number of bytes written.
- *
  * This function does not perform any checks, like if the target destination is within the range
  * of a relative jump.
  */
-ZYAN_INLINE ZyanU8 ZyrexWriteRelativeJump(void* address, ZyanUPointer destination)
+ZYAN_INLINE void ZyrexWriteRelativeJump(void* address, ZyanUPointer destination)
 {
 #pragma pack(push, 1)
     /**
@@ -101,7 +99,7 @@ ZYAN_INLINE void ZyrexWriteAbsoluteJump(void* address, ZyanUPointer destination)
 #ifdef ZYREX_X86
     jump->address = destination;
 #else
-    jump->address = (int32_t)(destination - ((uintptr_t)address + 6));
+    jump->address = (ZyanI32)(destination - ((ZyanUPointer)address + 6));
 #endif
 }
 

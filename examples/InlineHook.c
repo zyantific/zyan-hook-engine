@@ -33,6 +33,8 @@
 #include <Zyrex/Internal/Trampoline.h>
 #include <stdio.h>
 #include <Windows.h>
+#include "Zyrex/Transaction.h"
+#include <stdint.h>
 
 /* ============================================================================================== */
 /* Entry point                                                                                    */
