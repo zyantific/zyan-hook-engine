@@ -120,12 +120,17 @@ ZyanStatus ZyrexBarrierSystemShutdown()
 /* Barrier                                                                                        */
 /* ---------------------------------------------------------------------------------------------- */
 
-ZyanStatus ZyrexBarrierTryEnter(const void* hook)
+ZyrexBarrierHandle ZyrexBarrierGetHandle(const void* trampoline)
 {
-    return ZyrexBarrierTryEnterEx(hook, 0);
+    return (ZyrexBarrierHandle)trampoline;
 }
 
-ZyanStatus ZyrexBarrierTryEnterEx(const void* hook, ZyanU32 max_recursion_depth)
+ZyanStatus ZyrexBarrierTryEnter(ZyrexBarrierHandle handle)
+{
+    return ZyrexBarrierTryEnterEx(handle, 0);
+}
+
+ZyanStatus ZyrexBarrierTryEnterEx(ZyrexBarrierHandle handle, ZyanU32 max_recursion_depth)
 {
     ZyanVector* vector;
     ZYAN_CHECK(ZyanThreadTlsGetValue(g_barrier_tls_index, (void*)&vector));
@@ -139,7 +144,7 @@ ZyanStatus ZyrexBarrierTryEnterEx(const void* hook, ZyanU32 max_recursion_depth)
     }
 
     ZyrexBarrierContext context_element;
-    context_element.id = (ZyanUPointer)hook;
+    context_element.id = handle;
 
     ZyanUSize found_index;
     const ZyanStatus status =
@@ -166,7 +171,7 @@ ZyanStatus ZyrexBarrierTryEnterEx(const void* hook, ZyanU32 max_recursion_depth)
     return ZYAN_STATUS_TRUE;
 }
 
-ZyanStatus ZyrexBarrierLeave(const void* hook)
+ZyanStatus ZyrexBarrierLeave(ZyrexBarrierHandle handle)
 {
     ZyanVector* vector;
     ZYAN_CHECK(ZyanThreadTlsGetValue(g_barrier_tls_index, (void*)&vector));
@@ -177,7 +182,7 @@ ZyanStatus ZyrexBarrierLeave(const void* hook)
     }
 
     ZyrexBarrierContext context_element;
-    context_element.id = (ZyanUPointer)hook;
+    context_element.id = handle;
 
     ZyanUSize found_index;
     const ZyanStatus status =
@@ -209,7 +214,7 @@ ZyanStatus ZyrexBarrierLeave(const void* hook)
 /* Utils                                                                                          */
 /* ---------------------------------------------------------------------------------------------- */
 
-ZyanStatus ZyrexBarrierGetRecursionDepth(const void* hook, ZyanU32* current_depth)
+ZyanStatus ZyrexBarrierGetRecursionDepth(ZyrexBarrierHandle handle, ZyanU32* current_depth)
 {
     ZyanVector* vector;
     ZYAN_CHECK(ZyanThreadTlsGetValue(g_barrier_tls_index, (void*)&vector));
@@ -221,7 +226,7 @@ ZyanStatus ZyrexBarrierGetRecursionDepth(const void* hook, ZyanU32* current_dept
     }
 
     ZyrexBarrierContext context_element;
-    context_element.id = (ZyanUPointer)hook;
+    context_element.id = handle;
 
     ZyanUSize found_index;
     const ZyanStatus status =

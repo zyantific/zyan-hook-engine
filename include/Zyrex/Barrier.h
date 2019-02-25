@@ -35,6 +35,21 @@ extern "C" {
 #endif
 
 /* ============================================================================================== */
+/* Enums and types                                                                                */
+/* ============================================================================================== */
+
+/* ---------------------------------------------------------------------------------------------- */
+/* General                                                                                        */
+/* ---------------------------------------------------------------------------------------------- */
+
+/**
+ * @brief   Defines the `ZyrexBarrierHandle` datatype.
+ */
+typedef ZyanUPointer ZyrexBarrierHandle;
+
+/* ---------------------------------------------------------------------------------------------- */
+
+/* ============================================================================================== */
 /* Exported functions                                                                             */
 /* ============================================================================================== */
 
@@ -67,22 +82,37 @@ ZYREX_EXPORT ZyanStatus ZyrexBarrierSystemShutdown();
 /* ---------------------------------------------------------------------------------------------- */
 
 /**
+ * @brief   Returns the barrier handle for the hook that is identified by the given `trampoline`.
+ *
+ * @param   trampoline  The `trampoline` that identifies the hook for which the barrier handle
+ *                      should be obtained.
+ *
+ * @return  The barrier handle for the hook that is identified by the given `trampoline`.
+ *
+ * As the `trampoline` pointer might get modified from another thread (e.g. during hook removal),
+ * it is neccessary to obtain a constant barrier handle before invoking a barrier API function
+ * inside a hook callback.
+ * The returned handle should be saved and then used for all subsequent calls to the barrier API
+ * inside the current hook callback.
+ */
+ZYREX_EXPORT ZyrexBarrierHandle ZyrexBarrierGetHandle(const void* trampoline);
+
+/**
  * @brief   Tries to enter the barrier for the given hook.
  *
- * @brief   hook    TODO
+ * @param   handle  The barrier hook handle.
  *
  * @return  `ZYAN_STATUS_TRUE` if the barrier could be entered, `ZYAN_STATUS_FALSE` if not, or a
  *          generic zyan status code if an error occured.
  *
  * This function passes the barrier, if the `current_recursion_depth` is `0`.
  */
-ZYREX_EXPORT ZyanStatus ZyrexBarrierTryEnter(const void* hook);
-
+ZYREX_EXPORT ZyanStatus ZyrexBarrierTryEnter(ZyrexBarrierHandle handle);
 /**
  * @brief   Tries to enter the barrier for the given hook.
  *
- * @brief   hook                TODO
- * @biref   max_recursion_depth The maximum recursion depth to pass the barrier.
+ * @param   handle              The barrier hook handle.
+ * @param   max_recursion_depth The maximum recursion depth to pass the barrier.
  *
  * @return  `ZYAN_STATUS_TRUE` if the barrier could be entered, `ZYAN_STATUS_FALSE` if not, or a
  *          generic zyan status code if an error occured.
@@ -90,16 +120,17 @@ ZYREX_EXPORT ZyanStatus ZyrexBarrierTryEnter(const void* hook);
  * This function passes the barrier, if the `current_recursion_depth` is less than or equal to
  * the given `max_recursion_depth`.
  */
-ZYREX_EXPORT ZyanStatus ZyrexBarrierTryEnterEx(const void* hook, ZyanU32 max_recursion_depth);
+ZYREX_EXPORT ZyanStatus ZyrexBarrierTryEnterEx(ZyrexBarrierHandle handle,
+    ZyanU32 max_recursion_depth);
 
 /**
  * @brief   Leaves the barrier for the given hook.
  *
- * @param   hook    TODO
+ * @param   handle  The barrier hook handle.
  *
  * @return  A zyan status code.
  */
-ZYREX_EXPORT ZyanStatus ZyrexBarrierLeave(const void* hook);
+ZYREX_EXPORT ZyanStatus ZyrexBarrierLeave(ZyrexBarrierHandle handle);
 
 /* ---------------------------------------------------------------------------------------------- */
 /* Utils                                                                                          */
@@ -108,14 +139,15 @@ ZYREX_EXPORT ZyanStatus ZyrexBarrierLeave(const void* hook);
 /**
  * @brief   Returns the current recursion depth for the given hook.
  *
- * @param   hook            TODO
+ * @param   handle          The barrier hook handle.
  * @param   current_depth   Receives the current recursion depth for the given hook or `0`, if no
  *                          barrier context was found.
  *
  * @return  `ZYAN_STATUS_TRUE` if a barrier context was found for the given hook,
  *          `ZYAN_STATUS_FALSE` if not, or a generic zyan status code if an error occured.
  */
-ZYREX_EXPORT ZyanStatus ZyrexBarrierGetRecursionDepth(const void* hook, ZyanU32* current_depth);
+ZYREX_EXPORT ZyanStatus ZyrexBarrierGetRecursionDepth(ZyrexBarrierHandle handle,
+    ZyanU32* current_depth);
 
 /* ---------------------------------------------------------------------------------------------- */
 
