@@ -65,7 +65,7 @@ int main()
     //ZyrexTransactionAbort();
 
     const ZyanStatus status =
-        ZyrexTrampolineCreate((const void*)&xxx, 5, (const void*)&callback, &trampoline);
+        ZyrexTrampolineCreate((const void*)&xxx, 5, (const void*)&callback, (void*)&trampoline);
     if (ZYAN_SUCCESS(status))
     {
 

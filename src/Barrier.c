@@ -54,7 +54,7 @@ typedef struct ZyrexBarrierContext_
     /**
      * @brief   The barrier context id.
      */
-    ZyanUPointer id;
+    ZyrexBarrierHandle id;
     /**
      * @brief   The current recursion depth.
      */
@@ -84,6 +84,9 @@ ZYAN_THREAD_DECLARE_TLS_CALLBACK(ZyrexBarrierTlsCleanup, ZyanVector, data)
     }
 
     ZyanVectorDestroy(data, ZYAN_NULL);
+
+    // TODO: Replace with ZyanMemoryFree in the future
+    ZYAN_FREE(data);
 }
 
 /* ---------------------------------------------------------------------------------------------- */

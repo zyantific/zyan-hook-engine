@@ -35,13 +35,13 @@ extern "C" {
 #endif
 
 /* ============================================================================================== */
-/* Structs                                                                                        */
+/* Enums and types                                                                                */
 /* ============================================================================================== */
 
 /**
- * @brief   Defines the `ZyrexTrampolineInfo` struct.
+ * @brief   Defines the `ZyrexTrampoline` struct.
  */
-typedef struct ZyrexTrampolineInfo_
+typedef struct ZyrexTrampoline_
 {
     /**
      * @brief   The address of the hooked function.
@@ -59,7 +59,7 @@ typedef struct ZyrexTrampolineInfo_
      * @brief   The number of instruction bytes saved from the hooked function.
      */
     ZyanU8 saved_instruction_bytes;
-} ZyrexTrampolineInfo;
+} ZyrexTrampoline;
 
 /* ============================================================================================== */
 /* Functions                                                                                      */
@@ -69,16 +69,17 @@ typedef struct ZyrexTrampolineInfo_
  * @brief   Creates a new trampoline.
  *
  * @param   address     The address of the function to create the trampoline for.
- * @param   size        The minimum size of the trampoline code.
- *                      This argument specifies the minimum amount of instruction bytes that need
- *                      to be saved (moved) to the trampoline.
+ * @param   size        Specifies the minimum amount of instruction bytes that need to be saved
+ *                      to the trampoline (usually equals the amount of bytes overwritten by the
+ *                      branch instruction).
+ *                      This function might copy more bytes on demand to keep instructions intact.
  * @param   callback    The callback address.
- * @param   trampoline  Receives a pointer to the new trampoline.
+ * @param   trampoline  Receives basic information about the newly created trampoline.
  *
  * @return  A zyan status code.
  */
 ZyanStatus ZyrexTrampolineCreate(const void* address, ZyanUSize size, const void* callback,
-    const void** trampoline);
+    const ZyrexTrampoline* trampoline);
 
 /**
  * @brief   Destroys the given trampoline.
@@ -87,7 +88,7 @@ ZyanStatus ZyrexTrampolineCreate(const void* address, ZyanUSize size, const void
  *
  * @return  A zyan status code.
  */
-ZyanStatus ZyrexTrampolineFree(const void* trampoline);
+ZyanStatus ZyrexTrampolineFree(const ZyrexTrampoline* trampoline);
 
 /* ============================================================================================== */
 
