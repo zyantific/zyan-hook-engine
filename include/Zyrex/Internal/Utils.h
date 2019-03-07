@@ -35,16 +35,42 @@ extern "C" {
 #endif
 
 /* ============================================================================================== */
-/* Jumps                                                                                          */
+/* Macros                                                                                         */
 /* ============================================================================================== */
 
-#define ZYREX_SIZEOF_JUMP_RELATIVE 5
-#define ZYREX_SIZEOF_JUMP_ABSOLUTE 6
+/* ---------------------------------------------------------------------------------------------- */
+/* Constants                                                                                      */
+/* ---------------------------------------------------------------------------------------------- */
 
 /**
- * @brief   Writes a relative jump at the given `address`.
+ * @brief   The size of the relative jump instruction (in bytes).
+ */
+#define ZYREX_SIZEOF_RELATIVE_JUMP      5
+
+/**
+ * @brief   The size of the absolute jump instruction (in bytes).
+ */
+#define ZYREX_SIZEOF_ABSOLUTE_JUMP      6
+
+/**
+ * @brief   The target range of the relative jump instruction.
+ */
+#define ZYREX_RANGEOF_RELATIVE_JUMP     0x7FFFFFFF
+
+/* ---------------------------------------------------------------------------------------------- */
+
+/* ============================================================================================== */
+/* Utility functions                                                                              */
+/* ============================================================================================== */
+
+/* ---------------------------------------------------------------------------------------------- */
+/* Jumps                                                                                          */
+/* ---------------------------------------------------------------------------------------------- */
+
+/**
+ * @brief   Writes a relative jump instruction at the given `address`.
  *
- * @param   address     The memory address.
+ * @param   address     The jump address.
  * @param   destination The absolute destination address of the jump.
  *
  * This function does not perform any checks, like if the target destination is within the range
@@ -52,56 +78,33 @@ extern "C" {
  */
 ZYAN_INLINE void ZyrexWriteRelativeJump(void* address, ZyanUPointer destination)
 {
-#pragma pack(push, 1)
-    /**
-     * @brief   Represents the assembly equivalent of a 5 byte relative 32 bit jump.
-     */
-    typedef struct ZyrexJumpRelative32_
-    {
-        ZyanU8 opcode;
-        ZyanI32 distance;
-    } ZyrexJumpRelative32;
-#pragma pack(pop)
+    ZyanU8* instr = (ZyanU8*)address;
 
-    ZYAN_STATIC_ASSERT(sizeof(ZyrexJumpRelative32) == 5);
-
-    ZyrexJumpRelative32* jump = (ZyrexJumpRelative32*)address;
-    jump->opcode   = 0xE9;
-    jump->distance =
-        (ZyanI32)(destination - ((ZyanUPointer)address + sizeof(ZyrexJumpRelative32)));
+    *instr++ = 0xE9;
+    *(ZyanI32*)(instr) =
+        (ZyanI32)(destination - ((ZyanUPointer)address + ZYREX_SIZEOF_RELATIVE_JUMP));
 }
-
-/* ---------------------------------------------------------------------------------------------- */
 
 /**
  * @brief	Writes an absolute indirect jump instruction at the given `address`.
  *
- * @param   address     The memory address.
+ * @param   address     The jump address.
  * @param   destination The memory address that contains the absolute destination for the jump.
  */
 ZYAN_INLINE void ZyrexWriteAbsoluteJump(void* address, ZyanUPointer destination)
 {
-#pragma pack(push, 1)
-    /**
-     * @brief   Represents the assembly equivalent of an absolute jump.
-     */
-    typedef struct ZyrexJumpAbsolute_
-    {
-        ZyanU16 opcode;
-        ZyanI32 address;
-    } ZyrexJumpAbsolute;
-#pragma pack(pop)
+    ZyanU16* instr = (ZyanU16*)address;
 
-    ZYAN_STATIC_ASSERT(sizeof(ZyrexJumpAbsolute) == 6);
-
-    ZyrexJumpAbsolute* jump = (ZyrexJumpAbsolute*)address;
-    jump->opcode = 0x25FF;
-#ifdef ZYREX_X86
-    jump->address = destination;
+    *instr++ = 0x25FF;
+#if defined(ZYREX_X64)
+    *(ZyanI32*)(instr) =
+        (ZyanI32)(destination - ((ZyanUPointer)address + ZYREX_SIZEOF_ABSOLUTE_JUMP));
 #else
-    jump->address = (ZyanI32)(destination - ((ZyanUPointer)address + 6));
+    *(ZyanU32*)(instr) = (ZyanU32)destination;
 #endif
 }
+
+/* ---------------------------------------------------------------------------------------------- */
 
 /* ============================================================================================== */
 
