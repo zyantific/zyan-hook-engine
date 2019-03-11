@@ -1,7 +1,13 @@
-Zyrex
-====================
+# Zyrex
+Advanced x86/x86-64 hooking library for Windows
 
-Advanced x86/x64 hooking library.
+<img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT">
+<a href="https://gitter.im/zyantific/zyrex?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=body_badge">
+  <img src="https://badges.gitter.im/zyantific/zyrex.svg" alt="Gitter">
+</a>
+<a href="https://discord.zyantific.com/">
+  <img src="https://img.shields.io/discord/390136917779415060.svg?logo=discord&label=Discord">
+</a>
 
 ## Readme
 
@@ -9,38 +15,30 @@ Everything in this repository is highly WiP and will probably not work as intend
 
 ## Features
 
-### Core Features
+- Supports x86 and x86-64 (uses our [Zydis](https://github.com/zyantific/zydis) diassembler library)
+- Extremely safe and easy to use ([read more](https://github.com/zyantific/zyrex/doc/Safety.md))
+- Thread-safe by design due to a [Transactional API](https://github.com/zyantific/zyrex/doc/Transaction.md)
+- Inbuild [Barrier API](https://github.com/zyantific/zyrex/doc/Barrier.md) to prevent unwanted hook recursion
+- Complete doxygen documentation ([master](insert_link_here))
 
-- Transaction based API
-- x86 and x64 support
+### Hooking methods
 
-### Inline Hook
+#### Inline Hook
 
-- The most common hook method. Patches the first instructions of a target function to redirect the code-flow.
-- Allows the installation of multiple hooks at the same address (even third party hooks are supported, if they are using standard 5 byte relative jumps).
-- ...
+Patches the prologue of a function to redirect its codeflow and allocates a trampoline which can be used to continue execution of the original function.
 
-### Exception Hook
+## Roadmap
 
-- Writes interrupt/privileged instructions at the begin of a target function and redirects code-flow by catching the resulting exceptions in an unhandled exception handler.
-- Supports previously installed inline hooks (5 byte relative jump) at the same address.
-
-### Hardware-Breakpoint Hook
-
-- Hooks code by manipulating the windows debug registers (hardware breakpoint hook). Not a single byte of code is changed.
-- Manually select one of the four debug registers, or let the engine choose a suitable debug register for you.
-- You can either hook all running threads or just specific ones.
-- Supports previously installed inline hooks (5 byte relative jump).
-- Compatibility mode that tries to save at least 5 bytes of original instructions to the trampoline. This way you can attach 5 byte relative jumps to the same address as the context hook without crashing your application. 
-
-### IAT / EAT Hook
-
-- Hooks code by manipulating the import- and export-address-tables of windows binaries.
-- ...
-
-### VMT Hook
-
-- Hooks code by replacing the whole virtual-method-table (VMT) or single functions from the VMT of a given object instance.
+- Windows kernel-mode support
+- Multi-platform support (macOS, FreeBSD, Linux and UEFI)
+- Software-Breakpoint (SWBP) Hook
+  - Writes an interrupt/privileged instruction at the begin of a target function and redirects codeflow by catching the resulting exceptions in an unhandled exception handler (Windows only).
+- Hardware-Breakpoint (HWBP) Hook
+  - Hooks code using the CPU debug registers. Not a single byte of code is changed (Windows only).
+- Import/Export Address Table Hook
+  - Hooks code by replacing import-address table (IAT) and export-address table (EAT) entries of COFF binaries at runtime (Windows only).
+- Virtual-Method-Table Hook
+  - Hooks code by replacing virtual-method-table (VMT) entries of object instances at runtime.
 
 ## Build
 
@@ -59,6 +57,15 @@ make
 #### Windows
 
 Either use the [Visual Studio 2017 project](./msvc/) or build Zyrex using [CMake](https://cmake.org/download/) ([video guide](https://www.youtube.com/watch?v=fywLDK1OAtQ)).
+
+## Versions
+
+#### Scheme
+Versions follow the [semantic versioning scheme](https://semver.org/). All stability guarantees apply to the API only — ABI stability between patches cannot be assumed unless explicitly mentioned in the release notes.
+
+#### Branches
+- `master` holds the bleeding edge code of the next, unreleased Zyrex version. Elevated amounts of bugs and issues must be expected, API stability is not guaranteed outside of tagged commits.
+- `maintenance/v1` contains the code of the latest stable v1 release.
 
 ## License
 
