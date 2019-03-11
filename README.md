@@ -1,13 +1,13 @@
 # Zyrex
-Advanced x86/x86-64 hooking library for Windows
 
-<img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT">
-<a href="https://gitter.im/zyantific/zyrex?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=body_badge">
+<img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"><a href="https://gitter.im/zyantific/zyrex?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=body_badge">
   <img src="https://badges.gitter.im/zyantific/zyrex.svg" alt="Gitter">
 </a>
 <a href="https://discord.zyantific.com/">
   <img src="https://img.shields.io/discord/390136917779415060.svg?logo=discord&label=Discord">
 </a>
+
+Advanced x86/x86-64 hooking library for Windows
 
 ## Readme
 
