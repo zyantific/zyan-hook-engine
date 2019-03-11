@@ -38,6 +38,52 @@ extern "C" {
 /* Enums and types                                                                                */
 /* ============================================================================================== */
 
+/* ---------------------------------------------------------------------------------------------- */
+/* Flags                                                                                          */
+/* ---------------------------------------------------------------------------------------------- */
+
+/**
+ * @brief   Defines the `ZyrexTrampolineFlags` datatype.
+ */
+typedef ZyanU8 ZyrexTrampolineFlags;
+
+/**
+ * @brief   Controls rewriting of the `CALL` instruction.
+ *
+ * If a `CALL` instruction needs to be saved to the trampoline and this flag is passed, the code
+ * will be transformed into a `PUSH JMP` combination with the backjump address as destination.
+ *
+ * This allows the hook to be safely removed in all situations, as the codeflow will never return
+ * to the trampoline.
+ */
+#define ZYREX_TRAMPOLINE_FLAG_REWRITE_CALL  0x01
+
+/**
+ * @brief   Controls rewriting of the `JCX/JECXZ/JRCXZ` instruction.
+ *
+ * If a `JCX/JECXZ/JRCXZ` instruction needs to be saved to the trampoline and this flag is
+ * passed, the code will be transformed into equivalent instructions during relocation.
+ *
+ * This is required because no `rel32` version of this instruction exists in the x86/x86-64 ISA
+ * and the `rel8` version can't reach its target after relocating the code.
+ */
+#define ZYREX_TRAMPOLINE_FLAG_REWRITE_JCXZ  0x02
+
+/**
+ * @brief   Controls rewriting of the `LOOP/LOOPE/LOOPNE` instruction.
+ *
+ * If a `LOOP/LOOPE/LOOPNE` instruction needs to be saved to the trampoline and this flag is
+ * passed, the code will be transformed into equivalent instructions during relocation.
+ *
+ * This is required because no `rel32` version of this instruction exists in the x86/x86-64 ISA
+ * and the `rel8` version can't reach its target after relocating the code.
+ */
+#define ZYREX_TRAMPOLINE_FLAG_REWRITE_LOOP  0x04
+
+/* ---------------------------------------------------------------------------------------------- */
+/* Trampoline                                                                                     */
+/* ---------------------------------------------------------------------------------------------- */
+
 /**
  * @brief   Defines the `ZyrexTrampoline` struct.
  */
@@ -61,6 +107,8 @@ typedef struct ZyrexTrampoline_
     ZyanU8 saved_instruction_bytes;
 } ZyrexTrampoline;
 
+/* ---------------------------------------------------------------------------------------------- */
+
 /* ============================================================================================== */
 /* Functions                                                                                      */
 /* ============================================================================================== */
@@ -68,18 +116,37 @@ typedef struct ZyrexTrampoline_
 /**
  * @brief   Creates a new trampoline.
  *
- * @param   address     The address of the function to create the trampoline for.
- * @param   size        Specifies the minimum amount of instruction bytes that need to be saved
- *                      to the trampoline (usually equals the amount of bytes overwritten by the
- *                      branch instruction).
- *                      This function might copy more bytes on demand to keep instructions intact.
- * @param   callback    The callback address.
- * @param   trampoline  Receives basic information about the newly created trampoline.
+ * @param   address             The address of the function to create the trampoline for.
+ * @param   callback            The address of the callback function the hook will redirect to.
+ * @param   min_bytes_to_reloc  Specifies the minimum amount of  bytes that need to be relocated
+ *                              to the trampoline (usually equals the size of the branch
+ *                              instruction used for hooking).
+ *                              This function might copy more bytes on demand to keep individual
+ *                              instructions intact.
+ * @param   trampoline          Receives information about the newly created trampoline.
  *
  * @return  A zyan status code.
  */
-ZyanStatus ZyrexTrampolineCreate(const void* address, ZyanUSize size, const void* callback,
-    const ZyrexTrampoline* trampoline);
+ZyanStatus ZyrexTrampolineCreate(const void* address, const void* callback,
+    ZyanUSize min_bytes_to_reloc, ZyrexTrampoline* trampoline);
+
+/**
+ * @brief   Creates a new trampoline.
+ *
+ * @param   address             The address of the function to create the trampoline for.
+ * @param   callback            The address of the callback function the hook will redirect to.
+ * @param   min_bytes_to_reloc  Specifies the minimum amount of  bytes that need to be relocated
+ *                              to the trampoline (usually equals the size of the branch
+ *                              instruction used for hooking).
+ *                              This function might copy more bytes on demand to keep individual
+ *                              instructions intact.
+ * @param   flags               Trampoline creation flags.
+ * @param   trampoline          Receives information about the newly created trampoline.
+ *
+ * @return  A zyan status code.
+ */
+ZyanStatus ZyrexTrampolineCreateEx(const void* address, const void* callback,
+    ZyanUSize min_bytes_to_reloc, ZyrexTrampolineFlags flags, ZyrexTrampoline* trampoline);
 
 /**
  * @brief   Destroys the given trampoline.

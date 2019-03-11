@@ -96,7 +96,7 @@ ZYAN_INLINE void ZyrexWriteAbsoluteJump(void* address, ZyanUPointer destination)
     ZyanU16* instr = (ZyanU16*)address;
 
     *instr++ = 0x25FF;
-#if defined(ZYREX_X64)
+#if defined(ZYAN_X64)
     *(ZyanI32*)(instr) =
         (ZyanI32)(destination - ((ZyanUPointer)address + ZYREX_SIZEOF_ABSOLUTE_JUMP));
 #else
