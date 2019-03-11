@@ -50,6 +50,43 @@ typedef ZyanUPointer ZyrexBarrierHandle;
 /* ---------------------------------------------------------------------------------------------- */
 
 /* ============================================================================================== */
+/* Macros                                                                                         */
+/* ============================================================================================== */
+
+/* ---------------------------------------------------------------------------------------------- */
+/* Helper macros                                                                                  */
+/* ---------------------------------------------------------------------------------------------- */
+
+/**
+ * @brief   Tries to enter the barrier for the given hook and automatically returns from the
+ *          callback function after invokating the given `trampoline` in case of failure.
+ *
+ * @param   handle      The barrier hook handle
+ * @param   trampoline  The trampoline.
+ */
+#define ZYREX_BARRIER_ENTER_FUNC(handle, trampoline, ...) \
+    if (ZyrexBarrierTryEnter(handle) != ZYAN_STATUS_TRUE) \
+    { \
+        return trampoline(__VA_ARGS__); \
+    }
+
+/**
+ * @brief   Tries to enter the barrier for the given hook and automatically returns from the
+ *          callback function after invokating the given `trampoline` in case of failure.
+ *
+ * @param   handle      The barrier hook handle
+ * @param   trampoline  The trampoline.
+ */
+#define ZYREX_BARRIER_ENTER_PROC(handle, trampoline, ...) \
+    if (ZyrexBarrierTryEnter(handle) != ZYAN_STATUS_TRUE) \
+    { \
+        trampoline(__VA_ARGS__); \
+        return; \
+    }
+
+/* ---------------------------------------------------------------------------------------------- */
+
+/* ============================================================================================== */
 /* Exported functions                                                                             */
 /* ============================================================================================== */
 
