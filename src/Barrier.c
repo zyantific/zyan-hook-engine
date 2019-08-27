@@ -83,7 +83,7 @@ ZYAN_THREAD_DECLARE_TLS_CALLBACK(ZyrexBarrierTlsCleanup, ZyanVector, data)
         return;
     }
 
-    ZyanVectorDestroy(data, ZYAN_NULL);
+    ZyanVectorDestroy(data);
 
     // TODO: Replace with ZyanMemoryFree in the future
     ZYAN_FREE(data);
@@ -142,7 +142,7 @@ ZyanStatus ZyrexBarrierTryEnterEx(ZyrexBarrierHandle handle, ZyanU32 max_recursi
     {
         // TODO: Replace with ZyanMemoryAlloc in the future
         vector = ZYAN_MALLOC(sizeof(ZyanVector));
-        ZYAN_CHECK(ZyanVectorInit(vector, sizeof(ZyrexBarrierContext), 32));
+        ZYAN_CHECK(ZyanVectorInit(vector, sizeof(ZyrexBarrierContext), 32, ZYAN_NULL));
         ZYAN_CHECK(ZyanThreadTlsSetValue(g_barrier_tls_index, vector));
     }
 

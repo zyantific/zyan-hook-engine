@@ -42,7 +42,7 @@
 
 typedef int (*functype)();
 
-const void* trampoline = NULL;
+const void* original = NULL;
 
 int xxx()
 {
@@ -56,7 +56,7 @@ int xxx()
 
 int callback()
 {
-    return ((functype)trampoline)() + 1;
+    return ((functype)original)() + 1;
 }
 
 int main()
@@ -64,10 +64,12 @@ int main()
     ZyrexTransactionBegin();
     //ZyrexTransactionAbort();
 
+    ZyrexTrampoline trampoline;
     const ZyanStatus status =
-        ZyrexTrampolineCreate((const void*)&xxx, 5, (const void*)&callback, (void*)&trampoline);
+        ZyrexTrampolineCreate((const void*)&xxx, (const void*)&callback, 5, &trampoline);
     if (ZYAN_SUCCESS(status))
     {
+        original = trampoline.address_of_trampoline_code;
 
         DWORD old;
         VirtualProtect((LPVOID)&xxx, 5, PAGE_EXECUTE_READWRITE, &old);

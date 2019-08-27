@@ -214,7 +214,7 @@ static struct
     ZyanVector regions;
 } g_trampoline_data =
 {
-    ZYAN_FALSE, 0, 0, ZYAN_VECTOR_UNINITIALIZED
+    ZYAN_FALSE, 0, 0, ZYAN_VECTOR_INITIALIZER
 };
 
 /* ============================================================================================== */
@@ -999,7 +999,8 @@ ZyanStatus ZyrexTrampolineCreateEx(const void* address, const void* callback,
 
     if (!g_trampoline_data.is_initialized)
     {
-        ZYAN_CHECK(ZyanVectorInit(&g_trampoline_data.regions, sizeof(ZyrexTrampolineRegion*), 8));
+        ZYAN_CHECK(ZyanVectorInit(&g_trampoline_data.regions, sizeof(ZyrexTrampolineRegion*), 8, 
+            ZYAN_NULL));
 
         SYSTEM_INFO system_info;
         GetSystemInfo(&system_info);
@@ -1109,7 +1110,7 @@ ZyanStatus ZyrexTrampolineFree(const ZyrexTrampoline* trampoline)
     ZYAN_CHECK(ZyanVectorGetSize(&g_trampoline_data.regions, &size));
     if (size == 0)
     {
-        ZYAN_CHECK(ZyanVectorDestroy(&g_trampoline_data.regions, ZYAN_NULL));
+        ZYAN_CHECK(ZyanVectorDestroy(&g_trampoline_data.regions));
         g_trampoline_data.is_initialized = ZYAN_FALSE;
     }
 
