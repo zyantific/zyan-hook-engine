@@ -96,7 +96,7 @@ ZyanStatus ZyrexTransactionBegin()
     return ZYAN_STATUS_SUCCESS;
 }
 
-ZyanStatus ZyrexUpdateThread(HANDLE thread_handle)
+ZyanStatus ZyrexUpdateThread(ZyanThread thread_handle)
 {
     if (ZYAN_SUCCESS(g_transaction_error))
     {

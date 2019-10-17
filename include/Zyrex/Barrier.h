@@ -43,7 +43,7 @@ extern "C" {
 /* ---------------------------------------------------------------------------------------------- */
 
 /**
- * @brief   Defines the `ZyrexBarrierHandle` datatype.
+ * @brief   Defines the `ZyrexBarrierHandle` data-type.
  */
 typedef ZyanUPointer ZyrexBarrierHandle;
 
@@ -59,7 +59,7 @@ typedef ZyanUPointer ZyrexBarrierHandle;
 
 /**
  * @brief   Tries to enter the barrier for the given hook and automatically returns from the
- *          callback function after invokating the given `trampoline` in case of failure.
+ *          callback function after invoking the given `trampoline` in case of failure.
  *
  * @param   handle      The barrier hook handle
  * @param   trampoline  The trampoline.
@@ -72,7 +72,7 @@ typedef ZyanUPointer ZyrexBarrierHandle;
 
 /**
  * @brief   Tries to enter the barrier for the given hook and automatically returns from the
- *          callback function after invokating the given `trampoline` in case of failure.
+ *          callback function after invoking the given `trampoline` in case of failure.
  *
  * @param   handle      The barrier hook handle
  * @param   trampoline  The trampoline.
@@ -127,7 +127,7 @@ ZYREX_EXPORT ZyanStatus ZyrexBarrierSystemShutdown();
  * @return  The barrier handle for the hook that is identified by the given `trampoline`.
  *
  * As the `trampoline` pointer might get modified from another thread (e.g. during hook removal),
- * it is neccessary to obtain a constant barrier handle before invoking a barrier API function
+ * it is necessary to obtain a constant barrier handle before invoking a barrier API function
  * inside a hook callback.
  * The returned handle should be saved and then used for all subsequent calls to the barrier API
  * inside the current hook callback.
@@ -145,6 +145,7 @@ ZYREX_EXPORT ZyrexBarrierHandle ZyrexBarrierGetHandle(const void* trampoline);
  * This function passes the barrier, if the `current_recursion_depth` is `0`.
  */
 ZYREX_EXPORT ZyanStatus ZyrexBarrierTryEnter(ZyrexBarrierHandle handle);
+
 /**
  * @brief   Tries to enter the barrier for the given hook.
  *

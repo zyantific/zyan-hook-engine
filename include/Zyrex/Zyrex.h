@@ -63,28 +63,28 @@ extern "C" {
  *
  * @param   version The zyrex version value
  */
-#define ZYREX_VERSION_MAJOR(version) (ZyanU16)((version & 0xFFFF000000000000) >> 48)
+#define ZYREX_VERSION_MAJOR(version) (ZyanU16)(((version) & 0xFFFF000000000000) >> 48)
 
 /**
  * @brief   Extracts the minor-part of the zyrex version.
  *
  * @param   version The zyrex version value
  */
-#define ZYREX_VERSION_MINOR(version) (ZyanU16)((version & 0x0000FFFF00000000) >> 32)
+#define ZYREX_VERSION_MINOR(version) (ZyanU16)(((version) & 0x0000FFFF00000000) >> 32)
 
 /**
  * @brief   Extracts the patch-part of the zyrex version.
  *
  * @param   version The zyrex version value
  */
-#define ZYREX_VERSION_PATCH(version) (ZyanU16)((version & 0x00000000FFFF0000) >> 16)
+#define ZYREX_VERSION_PATCH(version) (ZyanU16)(((version) & 0x00000000FFFF0000) >> 16)
 
 /**
  * @brief   Extracts the build-part of the zyrex version.
  *
  * @param   version The zyrex version value
  */
-#define ZYREX_VERSION_BUILD(version) (ZyanU16)(version & 0x000000000000FFFF)
+#define ZYREX_VERSION_BUILD(version) (ZyanU16)((version) & 0x000000000000FFFF)
 
 /* ---------------------------------------------------------------------------------------------- */
 

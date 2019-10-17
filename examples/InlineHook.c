@@ -44,8 +44,10 @@ typedef int (*functype)();
 
 const void* original = NULL;
 
-int xxx()
+int xxx2()
 {
+    puts("hello from original\n");
+
     int v = 0;
     for (int i = 0; i < 3; ++i)
     {
@@ -56,6 +58,8 @@ int xxx()
 
 int callback()
 {
+    puts("hello from callback\n");
+
     return ((functype)original)() + 1;
 }
 
@@ -64,23 +68,36 @@ int main()
     ZyrexTransactionBegin();
     //ZyrexTransactionAbort();
 
+    ZyanU8 buffer[15] = 
+    {
+        0x75, 0x02, 0xeb, 0xfb, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0xC3
+    };
+    void* const buf = VirtualAlloc(NULL, sizeof(buffer), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    memcpy(buf, buffer, sizeof(buffer));
+
+    const functype xxx = (functype)buf;
+
     ZyrexTrampoline trampoline;
     const ZyanStatus status =
-        ZyrexTrampolineCreate((const void*)&xxx, (const void*)&callback, 5, &trampoline);
+        ZyrexTrampolineCreate((const void*)xxx, (const void*)&callback, 5, &trampoline);
     if (ZYAN_SUCCESS(status))
     {
         original = trampoline.address_of_trampoline_code;
 
         DWORD old;
-        VirtualProtect((LPVOID)&xxx, 5, PAGE_EXECUTE_READWRITE, &old);
-        uint8_t* t = (uint8_t*)&xxx;
+        VirtualProtect((LPVOID)xxx, 5, PAGE_EXECUTE_READWRITE, &old);
+        uint8_t* t = (uint8_t*)xxx;
         *t++ = 0xE9;
 
-        uintptr_t x = (const uint8_t*)&callback - (const uint8_t*)&xxx - 5;
+#ifdef ZYAN_X64
+        uintptr_t x = (const uint8_t*)trampoline.address_of_callback_jump - (const uint8_t*)xxx - 5;
+#else
+        uintptr_t x = (const uint8_t*)trampoline.address_of_callback - (const uint8_t*)xxx - 5;
+#endif
 
         *(uint32_t*)t = (uint32_t)x;
 
-        printf("%d", xxx());
+        printf("%d", ((functype)xxx)());
     }
 
     return 0;

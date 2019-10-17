@@ -18,7 +18,7 @@ Everything in this repository is highly WiP and will probably not work as intend
 - Supports x86 and x86-64 (uses our [Zydis](https://github.com/zyantific/zydis) diassembler library)
 - Extremely safe and easy to use ([read more](./doc/Safety.md))
 - Thread-safe by design due to a [Transactional API](./doc/Transaction.md)
-- Inbuild [Barrier API](./doc/Barrier.md) to prevent unwanted hook recursion
+- Inbuild [Hook Barrier API](./doc/Barrier.md) to prevent unwanted hook recursion
 - Complete doxygen documentation ([master](insert_link_here))
 
 ### Hooking methods

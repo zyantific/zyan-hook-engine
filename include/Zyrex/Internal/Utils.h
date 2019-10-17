@@ -29,6 +29,7 @@
 
 #include <Zycore/Defines.h>
 #include <Zycore/Types.h>
+#include <Zydis/Zydis.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -105,10 +106,85 @@ ZYAN_INLINE void ZyrexWriteAbsoluteJump(void* address, ZyanUPointer destination)
 }
 
 /* ---------------------------------------------------------------------------------------------- */
+/* Instruction decoding                                                                           */
+/* ---------------------------------------------------------------------------------------------- */
+
+// TODO: Integrate this function in Zydis `ZyrexCalcAbsoluteAddressRaw`
+
+/**
+ * @brief   Calculates the absolute target address value for a relative-branch instruction
+ *          or an instruction with `EIP/RIP`-relative memory operand.
+ *
+ * @param   instruction     A pointer to the `ZydisDecodedInstruction` struct.
+ * @param   runtime_address The runtime address of the instruction.
+ * @param   result_address  A pointer to the memory that receives the absolute address.
+ *
+ * @return  A zyan status code.
+ */
+ZYAN_INLINE ZyanStatus ZyrexCalcAbsoluteAddress(const ZydisDecodedInstruction* instruction,
+    ZyanU64 runtime_address, ZyanU64* result_address)
+{
+    ZYAN_ASSERT(instruction);
+    ZYAN_ASSERT(result_address);
+    ZYAN_ASSERT(instruction->attributes & ZYDIS_ATTRIB_IS_RELATIVE);
+
+    // Instruction with EIP/RIP-relative memory operand
+    if ((instruction->attributes & ZYDIS_ATTRIB_HAS_MODRM) &&
+        (instruction->raw.modrm.mod == 0) &&
+        (instruction->raw.modrm.rm == 5))
+    {
+        if (instruction->address_width == ZYDIS_ADDRESS_WIDTH_32)
+        {
+            *result_address = ((ZyanU32)runtime_address + instruction->length +
+                (ZyanU32)instruction->raw.disp.value);
+
+            return ZYAN_STATUS_SUCCESS;
+        }
+        if (instruction->address_width == ZYDIS_ADDRESS_WIDTH_64)
+        {
+            *result_address = (ZyanU64)(runtime_address + instruction->length +
+                instruction->raw.disp.value);
+
+            return ZYAN_STATUS_SUCCESS;
+        }
+    }
+
+    // Relative branch instruction
+    if (instruction->raw.imm[0].is_signed &&
+        instruction->raw.imm[0].is_relative)
+    {
+        *result_address = (ZyanU64)((ZyanI64)runtime_address + instruction->length +
+            instruction->raw.imm[0].value.s);
+        switch (instruction->machine_mode)
+        {
+        case ZYDIS_MACHINE_MODE_LONG_COMPAT_16:
+        case ZYDIS_MACHINE_MODE_LEGACY_16:
+        case ZYDIS_MACHINE_MODE_REAL_16:
+        case ZYDIS_MACHINE_MODE_LONG_COMPAT_32:
+        case ZYDIS_MACHINE_MODE_LEGACY_32:
+            if (instruction->operand_width == 16)
+            {
+                *result_address &= 0xFFFF;
+            }
+            break;
+        case ZYDIS_MACHINE_MODE_LONG_64:
+            break;
+        default:
+            ZYAN_UNREACHABLE;
+        }
+
+        return ZYAN_STATUS_SUCCESS;
+    }
+
+    ZYAN_UNREACHABLE;
+}
+
+/* ---------------------------------------------------------------------------------------------- */
 
 /* ============================================================================================== */
 
 #ifdef __cplusplus
 }
 #endif
+
 #endif /* ZYREX_UTILS_H */

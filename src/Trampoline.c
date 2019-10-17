@@ -28,82 +28,12 @@
 #include <Zycore/LibC.h>
 #include <Zycore/Vector.h>
 #include <Zydis/Zydis.h>
+#include <Zyrex/Internal/Relocation.h>
 #include <Zyrex/Internal/Trampoline.h>
-#include <Zyrex/Internal/Utils.h>
-
-/* ============================================================================================== */
-/* Constants                                                                                      */
-/* ============================================================================================== */
-
-/**
- * @brief   Defines the maximum amount of instruction bytes that can be saved to a trampoline.
- *
- * This formula is based on the following edge case consideration:
- * - If `SIZEOF_SAVED_INSTRUCTIONS == SIZEOF_RELATIVE_JUMP - 1 == 4`
- *   - We have to save exactly one additional instruction
- *   - We already saved 4 bytes
- *   - The additional instructions maximum length is 15 bytes
- */
-#define ZYREX_TRAMPOLINE_MAX_CODE_SIZE \
-    (ZYDIS_MAX_INSTRUCTION_LENGTH + ZYREX_SIZEOF_RELATIVE_JUMP - 1)
-
-/**
- * @brief   Defines the maximum amount of instruction bytes that can be saved to a trampoline
- *          including the backjump.
- */
-#define ZYREX_TRAMPOLINE_MAX_CODE_SIZE_WITH_BACKJUMP \
-    (ZYREX_TRAMPOLINE_MAX_CODE_SIZE + ZYREX_SIZEOF_ABSOLUTE_JUMP)
-
-/**
- * @brief   Defines the maximum amount of instructions that can be saved to a trampoline.
- */
-#define ZYREX_TRAMPOLINE_MAX_INSTRUCTION_COUNT \
-    (ZYREX_SIZEOF_RELATIVE_JUMP)
-
-/**
- * @brief   Defines the trampoline region signature.
- */
-#define ZYREX_TRAMPOLINE_REGION_SIGNATURE   'zrex'
 
 /* ============================================================================================== */
 /* Enums and types                                                                                */
 /* ============================================================================================== */
-
-/* ---------------------------------------------------------------------------------------------- */
-/* Translation map                                                                                */
-/* ---------------------------------------------------------------------------------------------- */
-
-/**
- * @brief   Defines the `ZyrexInstructionTranslationItem` struct.
- */
-typedef struct ZyrexInstructionTranslationItem_
-{
-    /**
-     * @brief   The offset of a single instruction relative to the beginning of the original
-     *          code.
-     */
-    ZyanU8 offset_original;
-    /**
-     * @brief   The offset of a single instruction relative to the beginning of the trampoline
-     *          code.
-     */
-    ZyanU8 offset_trampoline;
-} ZyrexInstructionTranslationItem;
-
-/**
- * @brief   Defines the `ZyrexInstructionTranslationMap` struct.
- */
-typedef struct ZyrexInstructionTranslationMap_
-{
-    /**
-     * @brief   The number of items in the translation map.
-     */
-    ZyanU8 count;
-    /**
-     * @brief   The translation items.
-     */
-    ZyrexInstructionTranslationItem items[ZYREX_TRAMPOLINE_MAX_INSTRUCTION_COUNT];
-} ZyrexInstructionTranslationMap;
 
 /* ---------------------------------------------------------------------------------------------- */
 /* Trampoline chunk                                                                               */
@@ -115,7 +45,7 @@ typedef struct ZyrexInstructionTranslationMap_
 typedef struct ZyrexTrampolineChunk_
 {
     /**
-     * @brief   Signals, if the trampoline chunk is used.
+     * @brief   Signals, if the trampoline chunk is currently in use.
      */
     ZyanBool is_used;
 
@@ -137,13 +67,27 @@ typedef struct ZyrexTrampolineChunk_
      */
     ZyanUPointer backjump_address;
     /**
-     * @brief   The trampoline code including the backjump to the hooked function.
+     * @brief   The buffer that holds the trampoline code and the backjump to the hooked function.
      */
-    ZyanU8 trampoline[ZYREX_TRAMPOLINE_MAX_CODE_SIZE_WITH_BACKJUMP];
+    ZyanU8 code_buffer[ZYREX_TRAMPOLINE_MAX_CODE_SIZE_WITH_BACKJUMP + 
+                       ZYREX_TRAMPOLINE_MAX_CODE_SIZE_BONUS];
+    /**
+     * @brief   The number of instruction bytes in the code buffer (not counting the backjump
+     *          instruction).
+     */
+    ZyanU8 code_buffer_size;
     /**
      * @brief   The instruction translation map.
      */
-    ZyrexInstructionTranslationMap map;
+    ZyrexInstructionTranslationMap translation_map;
+    /**
+     * @brief   The buffer that holds the original instruction bytes saved from the hooked function.
+     */
+    ZyanU8 original_code[ZYREX_TRAMPOLINE_MAX_CODE_SIZE];
+    /**
+     * @brief   The number of instruction bytes saved from the hooked function.
+     */
+    ZyanU8 original_code_size;
 } ZyrexTrampolineChunk;
 
 /* ---------------------------------------------------------------------------------------------- */
@@ -271,7 +215,7 @@ static ZyanStatus ZyrexGetSizeOfReadableMemoryRegion(const void* address, ZyanUS
         current_address = (ZyanU8*)info.BaseAddress + info.RegionSize;
         if (current_size == 0)
         {
-            current_size = (ZyanUPointer)address - (ZyanUPointer)info.BaseAddress;
+            current_size = (ZyanUPointer)current_address - (ZyanUPointer)address;
             continue;
         }
         current_size += info.RegionSize;
@@ -285,76 +229,6 @@ static ZyanStatus ZyrexGetSizeOfReadableMemoryRegion(const void* address, ZyanUS
 /* ---------------------------------------------------------------------------------------------- */
 
 #ifdef ZYAN_X64
-
-// TODO: Integrate this function in Zydis `ZyrexCalcAbsoluteAddressRaw`
-
-/**
- * @brief   Calculates the absolute target address value for a relative-branch instruction
- *          or an instruction with `EIP/RIP`-relative memory operand.
- *
- * @param   instruction     A pointer to the `ZydisDecodedInstruction` struct.
- * @param   runtime_address The runtime address of the instruction.
- * @param   result_address  A pointer to the memory that receives the absolute address.
- *
- * @return  A zyan status code.
- */
-static ZyanStatus ZyrexCalcAbsoluteAddress(const ZydisDecodedInstruction* instruction,
-    ZyanU64 runtime_address, ZyanU64* result_address)
-{
-    ZYAN_ASSERT(instruction);
-    ZYAN_ASSERT(result_address);
-    ZYAN_ASSERT(instruction->attributes & ZYDIS_ATTRIB_IS_RELATIVE);
-
-    // Instruction with EIP/RIP-relative memory operand
-    if ((instruction->attributes & ZYDIS_ATTRIB_HAS_MODRM) &&
-        (instruction->raw.modrm.mod == 0) &&
-        (instruction->raw.modrm.rm  == 5))
-    {
-        if (instruction->address_width == ZYDIS_ADDRESS_WIDTH_32)
-        {
-            *result_address = ((ZyanU32)runtime_address + instruction->length +
-                (ZyanU32)instruction->raw.disp.value);
-
-            return ZYAN_STATUS_SUCCESS;
-        }
-        if (instruction->address_width == ZYDIS_ADDRESS_WIDTH_64)
-        {
-            *result_address = (ZyanU64)(runtime_address + instruction->length +
-                instruction->raw.disp.value);
-
-            return ZYAN_STATUS_SUCCESS;
-        }
-    }
-
-    // Relative branch instruction
-    if (instruction->raw.imm[0].is_signed &&
-        instruction->raw.imm[0].is_relative)
-    {
-        *result_address = (ZyanU64)((ZyanI64)runtime_address + instruction->length +
-            instruction->raw.imm[0].value.s);
-        switch (instruction->machine_mode)
-        {
-        case ZYDIS_MACHINE_MODE_LONG_COMPAT_16:
-        case ZYDIS_MACHINE_MODE_LEGACY_16:
-        case ZYDIS_MACHINE_MODE_REAL_16:
-        case ZYDIS_MACHINE_MODE_LONG_COMPAT_32:
-        case ZYDIS_MACHINE_MODE_LEGACY_32:
-            if (instruction->operand_width == 16)
-            {
-                *result_address &= 0xFFFF;
-            }
-            break;
-        case ZYDIS_MACHINE_MODE_LONG_64:
-            break;
-        default:
-            ZYAN_UNREACHABLE;
-        }
-
-        return ZYAN_STATUS_SUCCESS;
-    }
-
-    ZYAN_UNREACHABLE;
-}
 
 /**
  * @brief   Decodes the assembly code in the given `buffer` and returns the lowest and highest
@@ -384,7 +258,7 @@ static ZyanStatus ZyrexGetAddressRangeOfRelativeInstructions(const void* buffer,
 #   error "Unsupported architecture detected"
 #endif
 
-    ZyanUPointer lo = 0;
+    ZyanUPointer lo = (ZyanUPointer)(-1);
     ZyanUPointer hi = 0;
     ZydisDecodedInstruction instruction;
     ZyanUSize offset = 0;
@@ -718,24 +592,33 @@ static ZyanStatus ZyrexTrampolineRegionAllocate(ZyanUPointer address_lo, ZyanUPo
         (const ZyanU8*)ZYAN_ALIGN_UP(mid, (ZyanUPointer)region_size);
 
     MEMORY_BASIC_INFORMATION memory_info;
+
     while (ZYAN_TRUE)
     {
         // Skip reserved address regions
         if (alloc_address_lo < (ZyanU8*)system_info.lpMinimumApplicationAddress)
         {
             alloc_address_lo = (const ZyanU8*)system_info.lpMinimumApplicationAddress;
+            alloc_address_lo = 
+                (const ZyanU8*)(ZYAN_ALIGN_UP((ZyanUPointer)alloc_address_lo, region_size));
         }
         if (alloc_address_lo > (ZyanU8*)system_info.lpMaximumApplicationAddress)
         {
             alloc_address_lo = (const ZyanU8*)system_info.lpMaximumApplicationAddress;
+            alloc_address_lo = 
+                (const ZyanU8*)(ZYAN_ALIGN_DOWN((ZyanUPointer)alloc_address_lo, region_size));
         }
         if (alloc_address_hi < (ZyanU8*)system_info.lpMinimumApplicationAddress)
         {
             alloc_address_hi = (const ZyanU8*)system_info.lpMinimumApplicationAddress;
+            alloc_address_lo = 
+                (const ZyanU8*)(ZYAN_ALIGN_UP((ZyanUPointer)alloc_address_lo, region_size));
         }
         if (alloc_address_hi > (ZyanU8*)system_info.lpMaximumApplicationAddress)
         {
             alloc_address_hi = (const ZyanU8*)system_info.lpMaximumApplicationAddress;
+            alloc_address_lo = 
+                (const ZyanU8*)(ZYAN_ALIGN_DOWN((ZyanUPointer)alloc_address_lo, region_size));
         }
 
         ZyanU8 c = 0;
@@ -840,7 +723,7 @@ static ZyanStatus ZyrexTrampolineRegionFree(ZyrexTrampolineRegion* region)
  */
 static ZyanStatus ZyrexTrampolineChunkInit(ZyrexTrampolineChunk* chunk, const void* address,
     const void* callback, ZyanUSize min_bytes_to_reloc, ZyanUSize max_bytes_to_read,
-    ZyrexTrampolineFlags flags)
+    ZyrexCodeRelocationFlags flags)
 {
     ZYAN_ASSERT(chunk);
     ZYAN_ASSERT(address);
@@ -858,109 +741,25 @@ static ZyanStatus ZyrexTrampolineChunkInit(ZyrexTrampolineChunk* chunk, const vo
 
 #endif
 
+    ZyanUSize bytes_read;
+    ZyanUSize bytes_written;
+
     // Relocate instructions
-    ZydisDecoder decoder;
-#if defined(ZYAN_X86)
-    ZydisDecoderInit(&decoder, ZYDIS_MACHINE_MODE_LONG_COMPAT_32, ZYDIS_ADDRESS_WIDTH_32);
-#elif defined(ZYAN_X64)
-    ZydisDecoderInit(&decoder, ZYDIS_MACHINE_MODE_LONG_64, ZYDIS_ADDRESS_WIDTH_64);
-#else
-#   error "Unsupported architecture detected"
-#endif
+    ZYAN_CHECK(ZyrexRelocateCode(address, max_bytes_to_read, chunk->code_buffer, 
+        sizeof(chunk->code_buffer), min_bytes_to_reloc, flags, &chunk->translation_map, 
+        &bytes_read, &bytes_written));
 
-    ZyanU8 instructions_read = 0;
-    ZyanU8 instructions_written = 0;
-    ZyanUSize bytes_read = 0;
-    ZyanUSize bytes_written = 0;
-
-    ZydisDecodedInstruction instruction;
-    while (bytes_read < min_bytes_to_reloc)
-    {
-        // The code buffer is full
-        ZYAN_ASSERT(bytes_written < ZYREX_TRAMPOLINE_MAX_CODE_SIZE);
-        // The translation map is full
-        ZYAN_ASSERT(instructions_read < ZYREX_TRAMPOLINE_MAX_INSTRUCTION_COUNT);
-
-        const ZyanStatus status =
-            ZydisDecoderDecodeBuffer(&decoder, (ZyanU8*)address + bytes_read,
-                max_bytes_to_read - bytes_read, &instruction);
-
-        ZYAN_CHECK(status);
-
-        if (instruction.attributes & ZYDIS_ATTRIB_IS_RELATIVE)
-        {
-            switch (instruction.mnemonic)
-            {
-            case ZYDIS_MNEMONIC_CALL:
-            {
-                if (!(flags & ZYREX_TRAMPOLINE_FLAG_REWRITE_CALL))
-                {
-                    return ZYAN_STATUS_FAILED; // TODO:
-                }
-
-                if (instruction.attributes & ZYDIS_ATTRIB_HAS_MODRM)
-                {
-                    // Indirect absolute `CALL` instruction with `EIP/RIP`-relative address
-
-                } else
-                {
-                    // Relative `CALL` instruction
-
-                }
-
-                // TODO: Rewrite CALL
-                break;
-            }
-            case ZYDIS_MNEMONIC_JCXZ:
-            case ZYDIS_MNEMONIC_JECXZ:
-            case ZYDIS_MNEMONIC_JRCXZ:
-            {
-                if (!(flags & ZYREX_TRAMPOLINE_FLAG_REWRITE_JCXZ))
-                {
-                    return ZYAN_STATUS_FAILED; // TODO:
-                }
-                // TODO: Rewrite JCXZ
-                break;
-            }
-            case ZYDIS_MNEMONIC_LOOP:
-            case ZYDIS_MNEMONIC_LOOPE:
-            case ZYDIS_MNEMONIC_LOOPNE:
-            {
-                if (!(flags & ZYREX_TRAMPOLINE_FLAG_REWRITE_LOOP))
-                {
-                    return ZYAN_STATUS_FAILED; // TODO:
-                }
-                // TODO: Rewrite LOOP
-                break;
-            }
-            default:
-                break;
-            }
-        } else
-        {
-            ZYAN_MEMCPY(&chunk->trampoline[bytes_written],
-                (const ZyanU8*)address + bytes_read, instruction.length);
-        }
-
-        chunk->map.items[instructions_read].offset_original = (ZyanU8)bytes_read;
-        chunk->map.items[instructions_read].offset_trampoline = (ZyanU8)bytes_written;
-        bytes_read += instruction.length;
-        bytes_written += instruction.length;
-        ++instructions_read;
-        ++instructions_written;
-    }
-
-    ZyrexWriteAbsoluteJump(&chunk->trampoline[bytes_written],
+    // Write backjump
+    ZyrexWriteAbsoluteJump(&chunk->code_buffer[bytes_written],
         (ZyanUPointer)&chunk->backjump_address);
     chunk->backjump_address = (ZyanUPointer)address + bytes_read;
-    chunk->map.count = instructions_read;
 
-    // Fill remaining bytes with `INT 3` instructions
-    const ZyanUSize bytes_remaining = ZYREX_TRAMPOLINE_MAX_CODE_SIZE_WITH_BACKJUMP - bytes_written;
+    // Fill remaining space with `INT 3` instructions
+    const ZyanUSize bytes_remaining = sizeof(chunk->code_buffer) - bytes_written;
     if (bytes_remaining > 0)
     {
-        ZYAN_MEMSET(&chunk->trampoline[bytes_written + ZYREX_SIZEOF_ABSOLUTE_JUMP], 0xCC,
-            bytes_remaining);
+        ZYAN_MEMSET(&chunk->code_buffer[bytes_written + ZYREX_SIZEOF_ABSOLUTE_JUMP], 0xCC,
+            bytes_remaining - ZYREX_SIZEOF_ABSOLUTE_JUMP);
     }
 
     return ZYAN_STATUS_SUCCESS;
@@ -976,13 +775,13 @@ ZyanStatus ZyrexTrampolineCreate(const void* address, const void* callback,
     ZyanUSize min_bytes_to_reloc, ZyrexTrampoline* trampoline)
 {
     return ZyrexTrampolineCreateEx(address, callback, min_bytes_to_reloc,
-        ZYREX_TRAMPOLINE_FLAG_REWRITE_CALL |
-        ZYREX_TRAMPOLINE_FLAG_REWRITE_JCXZ |
-        ZYREX_TRAMPOLINE_FLAG_REWRITE_LOOP, trampoline);
+        ZYREX_CODE_RELOC_FLAG_REWRITE_CALL |
+        ZYREX_CODE_RELOC_FLAG_REWRITE_JCXZ |
+        ZYREX_CODE_RELOC_FLAG_REWRITE_LOOP, trampoline);
 }
 
 ZyanStatus ZyrexTrampolineCreateEx(const void* address, const void* callback,
-    ZyanUSize min_bytes_to_reloc, ZyrexTrampolineFlags flags, ZyrexTrampoline* trampoline)
+    ZyanUSize min_bytes_to_reloc, ZyrexCodeRelocationFlags flags, ZyrexTrampoline* trampoline)
 {
     if (!address || !callback || (min_bytes_to_reloc < 1) || !trampoline)
     {
@@ -1032,8 +831,13 @@ ZyanStatus ZyrexTrampolineCreateEx(const void* address, const void* callback,
 
     if ((hi - lo) > ZYREX_RANGEOF_RELATIVE_JUMP)
     {
-        return ZYAN_STATUS_INVALID_OPERATION;
+        return ZYAN_STATUS_OUT_OF_RANGE;
     }
+
+#else
+
+    const ZyanUPointer lo = (ZyanUPointer)address;
+    const ZyanUPointer hi = (ZyanUPointer)address;
 
 #endif
 
@@ -1081,7 +885,16 @@ ZyanStatus ZyrexTrampolineCreateEx(const void* address, const void* callback,
         return status;
     }
 
-    trampoline->address_of_trampoline_code = &chunk->trampoline;
+    trampoline->address_of_code = address;
+    trampoline->address_of_callback = callback;
+#ifdef ZYAN_X64
+    trampoline->address_of_callback_jump = &chunk->callback_jump;
+#endif
+    trampoline->address_of_trampoline_code = &chunk->code_buffer;
+    trampoline->address_of_original_code = &chunk->original_code;
+    trampoline->size_of_trampoline_code = chunk->code_buffer_size;
+    trampoline->size_of_original_code = chunk->original_code_size;
+    trampoline->translation_map = &chunk->translation_map;
 
     --region->header.number_of_unused_chunks;
     ZYAN_UNUSED(ZyrexTrampolineRegionProtect(region));
