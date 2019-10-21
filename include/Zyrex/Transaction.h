@@ -87,38 +87,38 @@ ZYREX_EXPORT ZyanStatus ZyrexTransactionAbort();
 /* Hook installation                                                                              */
 /* ---------------------------------------------------------------------------------------------- */
 
-/**
- * @brief   Attaches an inline hook.
- *
- * @param   address     Pointer to the code address. Receives the trampoline address, if the
- *                      transaction succeeded.
- * @param   callback    The callback address.
- *
- * @return  A zyan status code.
- */
-ZYREX_EXPORT ZyanStatus ZyrexAttachInlineHook(const void** address, const void* callback);
-
-/**
- * @brief   Attaches an exception hook.
- *
- * @param   address     Pointer to the code address. Receives the trampoline address, if the
- *                      transaction succeeded.
- * @param   callback    The callback address.
- *
- * @return  A zyan status code.
- */
-ZYREX_EXPORT ZyanStatus ZyrexAttachExceptionHook(const void** address, const void* callback);
-
-/**
- * @brief   Attaches a context hook.
- *
- * @param   address     Pointer to the code address. Receives the trampoline address, if the
- *                      transaction succeeded.
- * @param   callback    The callback address.
- *
- * @return  A zyan status code.
- */
-ZYREX_EXPORT ZyanStatus ZyrexAttachContextHook(const void** address, const void* callback);
+///**
+// * @brief   Attaches an inline hook.
+// *
+// * @param   address     Pointer to the code address. Receives the trampoline address, if the
+// *                      transaction succeeded.
+// * @param   callback    The callback address.
+// *
+// * @return  A zyan status code.
+// */
+//ZYREX_EXPORT ZyanStatus ZyrexAttachInlineHook(const void** address, const void* callback);
+//
+///**
+// * @brief   Attaches an exception hook.
+// *
+// * @param   address     Pointer to the code address. Receives the trampoline address, if the
+// *                      transaction succeeded.
+// * @param   callback    The callback address.
+// *
+// * @return  A zyan status code.
+// */
+//ZYREX_EXPORT ZyanStatus ZyrexAttachExceptionHook(const void** address, const void* callback);
+//
+///**
+// * @brief   Attaches a context hook.
+// *
+// * @param   address     Pointer to the code address. Receives the trampoline address, if the
+// *                      transaction succeeded.
+// * @param   callback    The callback address.
+// *
+// * @return  A zyan status code.
+// */
+//ZYREX_EXPORT ZyanStatus ZyrexAttachContextHook(const void** address, const void* callback);
 
 // TODO: IAT/EAT, VTable, ..
 

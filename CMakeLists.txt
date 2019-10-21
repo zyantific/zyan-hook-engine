@@ -47,10 +47,10 @@ generate_export_header("Zyrex" BASE_NAME "ZYREX" EXPORT_FILE_NAME "ZyrexExportCo
 target_sources("Zyrex"
     PRIVATE
         "${CMAKE_CURRENT_LIST_DIR}/include/Zyrex/Barrier.h"
-        "${CMAKE_CURRENT_LIST_DIR}/include/Zyrex/InlineHook.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Zyrex/Status.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Zyrex/Transaction.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Zyrex/Zyrex.h"
+        "${CMAKE_CURRENT_LIST_DIR}/include/Zyrex/Internal/InlineHook.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Zyrex/Internal/Relocation.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Zyrex/Internal/Trampoline.h"
         "${CMAKE_CURRENT_LIST_DIR}/include/Zyrex/Internal/Utils.h"

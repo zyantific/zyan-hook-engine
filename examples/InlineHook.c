@@ -30,6 +30,7 @@
  */
 
 #include <Zyrex/Zyrex.h>
+#include <Zyrex/Internal/InlineHook.h>
 #include <Zyrex/Internal/Trampoline.h>
 #include <stdio.h>
 #include <Windows.h>
@@ -70,7 +71,7 @@ int main()
 
     ZyanU8 buffer[15] = 
     {
-        0x75, 0x02, 0xeb, 0xfb, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0xC3
+        0x75, 0x02, 0xeb, 0xfb, 0x48, 0x8B, 0x05, 0xF5, 0xFF, 0xFF, 0xFF, 0x90, 0x90, 0x90, 0xC3
     };
     void* const buf = VirtualAlloc(NULL, sizeof(buffer), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
     memcpy(buf, buffer, sizeof(buffer));
@@ -84,18 +85,11 @@ int main()
     {
         original = trampoline.address_of_trampoline_code;
 
-        DWORD old;
-        VirtualProtect((LPVOID)xxx, 5, PAGE_EXECUTE_READWRITE, &old);
-        uint8_t* t = (uint8_t*)xxx;
-        *t++ = 0xE9;
-
 #ifdef ZYAN_X64
-        uintptr_t x = (const uint8_t*)trampoline.address_of_callback_jump - (const uint8_t*)xxx - 5;
+        ZyrexAttachInlineHook(xxx, trampoline.address_of_callback_jump);
 #else
-        uintptr_t x = (const uint8_t*)trampoline.address_of_callback - (const uint8_t*)xxx - 5;
+        ZyrexAttachInlineHook(xxx, trampoline.address_of_callback);
 #endif
-
-        *(uint32_t*)t = (uint32_t)x;
 
         printf("%d", ((functype)xxx)());
     }

@@ -24,4 +24,45 @@
 
 ***************************************************************************************************/
 
-static int a = 0;
+#include <windows.h>
+#include <Zyrex/Internal/InlineHook.h>
+#include <Zyrex/Internal/Utils.h>
+
+/* ============================================================================================== */
+/* Functions                                                                                      */
+/* ============================================================================================== */
+
+/* ---------------------------------------------------------------------------------------------- */
+/* Attaching and detaching                                                                        */
+/* ---------------------------------------------------------------------------------------------- */
+
+ZyanStatus ZyrexAttachInlineHook(void* address, const void* callback)
+{
+    // TODO: Use platform independent APIs
+
+    // Make 
+    DWORD old_protect;
+    if (!VirtualProtect((LPVOID)address, ZYREX_SIZEOF_RELATIVE_JUMP, PAGE_EXECUTE_READWRITE, 
+        &old_protect))
+    {
+        return ZYAN_STATUS_BAD_SYSTEMCALL;
+    }
+
+    ZyrexWriteRelativeJump(address, (ZyanUPointer)callback);
+
+    if (!VirtualProtect((LPVOID)address, ZYREX_SIZEOF_RELATIVE_JUMP, old_protect, &old_protect))
+    {
+        return ZYAN_STATUS_BAD_SYSTEMCALL;
+    }
+
+    if (!FlushInstructionCache(GetCurrentProcess(), (LPCVOID)address, ZYREX_SIZEOF_RELATIVE_JUMP))
+    {
+        return ZYAN_STATUS_BAD_SYSTEMCALL;
+    }
+
+    return ZYAN_STATUS_SUCCESS;
+}
+
+/* ---------------------------------------------------------------------------------------------- */
+
+/* ============================================================================================== */

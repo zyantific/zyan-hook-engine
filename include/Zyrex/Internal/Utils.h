@@ -133,14 +133,14 @@ ZYAN_INLINE ZyanStatus ZyrexCalcAbsoluteAddress(const ZydisDecodedInstruction* i
         (instruction->raw.modrm.mod == 0) &&
         (instruction->raw.modrm.rm == 5))
     {
-        if (instruction->address_width == ZYDIS_ADDRESS_WIDTH_32)
+        if (instruction->address_width == 32)
         {
             *result_address = ((ZyanU32)runtime_address + instruction->length +
                 (ZyanU32)instruction->raw.disp.value);
 
             return ZYAN_STATUS_SUCCESS;
         }
-        if (instruction->address_width == ZYDIS_ADDRESS_WIDTH_64)
+        if (instruction->address_width == 64)
         {
             *result_address = (ZyanU64)(runtime_address + instruction->length +
                 instruction->raw.disp.value);
