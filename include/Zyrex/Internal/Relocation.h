@@ -43,8 +43,8 @@ extern "C" {
 /* ---------------------------------------------------------------------------------------------- */
 
 /**
- * @brief   Copies all instructions from the `source` buffer to the `destination` address until
- *          at least `min_bytes_to_reloc` bytes are read.
+ * @brief   Copies all instructions from the `source` address to the `destination` address until
+ *          at least `min_bytes_to_reloc` bytes are processed.
  *
  * @param   source              A pointer to the source buffer.
  * @param   source_length       The maximum amount of bytes that can be safely read from the 
@@ -52,9 +52,7 @@ extern "C" {
  * @param   destination         A pointer to the destination buffer.
  * @param   destination_length  The maximum amount of bytes that can be safely written to the
  *                              destination buffer.
- * @param   min_bytes_to_reloc  Specifies the minimum amount of bytes that need to be relocated
- *                              to the trampoline (usually equals the size of the branch
- *                              instruction used for hooking).
+ * @param   min_bytes_to_reloc  Specifies the minimum amount of bytes that should be relocated.
  *                              This function might copy more bytes on demand to keep individual
  *                              instructions intact.
  * @param   flags               Additional flags to control how the function handles some special

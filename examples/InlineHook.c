@@ -41,11 +41,11 @@
 /* Entry point                                                                                    */
 /* ============================================================================================== */
 
-typedef int (*functype)();
+typedef ZyanU64 (*functype)();
 
 const void* original = NULL;
 
-int xxx2()
+ZyanU64 xxx2()
 {
     puts("hello from original\n");
 
@@ -54,10 +54,10 @@ int xxx2()
     {
         v++;
     }
-    return 1337;
+    return 0x1337;
 }
 
-int callback()
+ZyanU64 callback()
 {
     puts("hello from callback\n");
 
@@ -69,9 +69,9 @@ int main()
     ZyrexTransactionBegin();
     //ZyrexTransactionAbort();
 
-    ZyanU8 buffer[15] = 
-    {
-        0x75, 0x02, 0xeb, 0xfb, 0x48, 0x8B, 0x05, 0xF5, 0xFF, 0xFF, 0xFF, 0x90, 0x90, 0x90, 0xC3
+    ZyanU8 buffer[] = 
+    {                                 // E1, E2
+        0x75, 0x02, 0xeb, 0xfb, 0x67, 0xE3, 0xf8, 0x48, 0x8B, 0x05, 0xF5, 0xFF, 0xFF, 0xFF, 0x90, 0x90, 0x90, 0xC3
     };
     void* const buf = VirtualAlloc(NULL, sizeof(buffer), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
     memcpy(buf, buffer, sizeof(buffer));
@@ -86,12 +86,12 @@ int main()
         original = trampoline.address_of_trampoline_code;
 
 #ifdef ZYAN_X64
-        ZyrexAttachInlineHook(xxx, trampoline.address_of_callback_jump);
+        ZyrexAttachInlineHook((void*)xxx, trampoline.address_of_callback_jump);
 #else
         ZyrexAttachInlineHook(xxx, trampoline.address_of_callback);
 #endif
 
-        printf("%d", ((functype)xxx)());
+        printf("%.16llX", ((functype)xxx)());
     }
 
     return 0;
