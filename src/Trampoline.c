@@ -717,20 +717,16 @@ static ZyanStatus ZyrexTrampolineRegionFree(ZyrexTrampolineRegion* region)
  *                              instructions intact.
  * @param   max_bytes_to_read   The maximum amount of bytes that can be safely read from the given
  *                              `address`.
- * @param   flags               Trampoline creation flags.
  *
  * @return  A zyan status code.
  */
 static ZyanStatus ZyrexTrampolineChunkInit(ZyrexTrampolineChunk* chunk, const void* address,
-    const void* callback, ZyanUSize min_bytes_to_reloc, ZyanUSize max_bytes_to_read,
-    ZyrexCodeRelocationFlags flags)
+    const void* callback, ZyanUSize min_bytes_to_reloc, ZyanUSize max_bytes_to_read)
 {
     ZYAN_ASSERT(chunk);
     ZYAN_ASSERT(address);
     ZYAN_ASSERT(callback);
     ZYAN_ASSERT(min_bytes_to_reloc <= max_bytes_to_read);
-
-    ZYAN_UNUSED(flags);
 
     chunk->is_used = ZYAN_TRUE;
 
@@ -746,7 +742,7 @@ static ZyanStatus ZyrexTrampolineChunkInit(ZyrexTrampolineChunk* chunk, const vo
 
     // Relocate instructions
     ZYAN_CHECK(ZyrexRelocateCode(address, max_bytes_to_read, chunk->code_buffer, 
-        sizeof(chunk->code_buffer), min_bytes_to_reloc, flags, &chunk->translation_map, 
+        sizeof(chunk->code_buffer), min_bytes_to_reloc, &chunk->translation_map, 
         &bytes_read, &bytes_written));
 
     // Write backjump
@@ -762,6 +758,11 @@ static ZyanStatus ZyrexTrampolineChunkInit(ZyrexTrampolineChunk* chunk, const vo
             bytes_remaining - ZYREX_SIZEOF_ABSOLUTE_JUMP);
     }
 
+    // Backup original instructions
+    ZYAN_ASSERT(bytes_read <= ZYAN_ARRAY_LENGTH(chunk->original_code));
+    chunk->original_code_size = (ZyanU8)bytes_read;
+    ZYAN_MEMCPY(chunk->original_code, address, bytes_read);
+
     return ZYAN_STATUS_SUCCESS;
 }
 
@@ -773,15 +774,6 @@ static ZyanStatus ZyrexTrampolineChunkInit(ZyrexTrampolineChunk* chunk, const vo
 
 ZyanStatus ZyrexTrampolineCreate(const void* address, const void* callback,
     ZyanUSize min_bytes_to_reloc, ZyrexTrampoline* trampoline)
-{
-    return ZyrexTrampolineCreateEx(address, callback, min_bytes_to_reloc,
-        ZYREX_CODE_RELOC_FLAG_REWRITE_CALL |
-        ZYREX_CODE_RELOC_FLAG_REWRITE_JCXZ |
-        ZYREX_CODE_RELOC_FLAG_REWRITE_LOOP, trampoline);
-}
-
-ZyanStatus ZyrexTrampolineCreateEx(const void* address, const void* callback,
-    ZyanUSize min_bytes_to_reloc, ZyrexCodeRelocationFlags flags, ZyrexTrampoline* trampoline)
 {
     if (!address || !callback || (min_bytes_to_reloc < 1) || !trampoline)
     {
@@ -871,8 +863,7 @@ ZyanStatus ZyrexTrampolineCreateEx(const void* address, const void* callback,
 
     ZYAN_ASSERT(region->header.number_of_unused_chunks > 0);
 
-    status =
-        ZyrexTrampolineChunkInit(chunk, address, callback, min_bytes_to_reloc, source_size, flags);
+    status = ZyrexTrampolineChunkInit(chunk, address, callback, min_bytes_to_reloc, source_size);
     if (!ZYAN_SUCCESS(status))
     {
         if (is_new_region)

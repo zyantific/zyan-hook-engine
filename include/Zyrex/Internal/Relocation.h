@@ -55,8 +55,6 @@ extern "C" {
  * @param   min_bytes_to_reloc  Specifies the minimum amount of bytes that should be relocated.
  *                              This function might copy more bytes on demand to keep individual
  *                              instructions intact.
- * @param   flags               Additional flags to control how the function handles some special
- *                              instructions.
  * @param   translation_map     The instruction translation map.
  * @param   bytes_read          Returns the number of bytes read from the source buffer.
  * @param   bytes_written       Returns the number of bytes written to the destination buffer.
@@ -64,7 +62,7 @@ extern "C" {
  * @return  A zyan status code.
  */
 ZyanStatus ZyrexRelocateCode(const void* source, ZyanUSize source_length, void* destination, 
-    ZyanUSize destination_length, ZyanUSize min_bytes_to_reloc, ZyrexCodeRelocationFlags flags, 
+    ZyanUSize destination_length, ZyanUSize min_bytes_to_reloc, 
     ZyrexInstructionTranslationMap* translation_map, ZyanUSize* bytes_read, 
     ZyanUSize* bytes_written);
 

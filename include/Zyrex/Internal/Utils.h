@@ -65,6 +65,26 @@ extern "C" {
 /* ============================================================================================== */
 
 /* ---------------------------------------------------------------------------------------------- */
+/* General                                                                                        */
+/* ---------------------------------------------------------------------------------------------- */
+
+/**
+ * @brief   Calculates a relative offset from the given `source` to the given `destination`
+ *          address.
+ *
+ * @param   instruction_length  The length of the instruction the offset is calculated for.
+ * @param   source_address      The source address of the instruction.
+ * @param   destination_address The destination address.
+ *
+ * @return  The relative offset from the given `source` to the given `destination` address.
+ */
+ZYAN_INLINE ZyanI32 ZyrexCalculateRelativeOffset(ZyanU8 instruction_length, 
+    ZyanUPointer source_address, ZyanUPointer destination_address)
+{
+    return (ZyanI32)(destination_address - source_address - instruction_length);    
+}
+
+/* ---------------------------------------------------------------------------------------------- */
 /* Jumps                                                                                          */
 /* ---------------------------------------------------------------------------------------------- */
 
@@ -82,8 +102,8 @@ ZYAN_INLINE void ZyrexWriteRelativeJump(void* address, ZyanUPointer destination)
     ZyanU8* instr = (ZyanU8*)address;
 
     *instr++ = 0xE9;
-    *(ZyanI32*)(instr) =
-        (ZyanI32)(destination - ((ZyanUPointer)address + ZYREX_SIZEOF_RELATIVE_JUMP));
+    *(ZyanI32*)(instr) = ZyrexCalculateRelativeOffset(ZYREX_SIZEOF_RELATIVE_JUMP, 
+        (ZyanUPointer)address, destination);
 }
 
 /**
@@ -98,8 +118,8 @@ ZYAN_INLINE void ZyrexWriteAbsoluteJump(void* address, ZyanUPointer destination)
 
     *instr++ = 0x25FF;
 #if defined(ZYAN_X64)
-    *(ZyanI32*)(instr) =
-        (ZyanI32)(destination - ((ZyanUPointer)address + ZYREX_SIZEOF_ABSOLUTE_JUMP));
+    *(ZyanI32*)(instr) = ZyrexCalculateRelativeOffset(ZYREX_SIZEOF_ABSOLUTE_JUMP, 
+        (ZyanUPointer)address, destination);
 #else
     *(ZyanU32*)(instr) = (ZyanU32)destination;
 #endif
