@@ -33,6 +33,7 @@
 #define ZYREX_H
 
 #include <ZyrexExportConfig.h>
+#include <Zycore/Status.h>
 #include <Zycore/Types.h>
 
 // TODO:
@@ -92,6 +93,32 @@ extern "C" {
 /* Exported functions                                                                             */
 /* ============================================================================================== */
 
+/* ---------------------------------------------------------------------------------------------- */
+/* Initialization & Finalization                                                                  */
+/* ---------------------------------------------------------------------------------------------- */
+
+/**
+ * @brief   Initializes the `Zyrex` hook engine.
+ *
+ * @return  A zyan status code.
+ *
+ * This function has to be called before invoking any other `Zyrex*` API.
+ */
+ZYREX_EXPORT ZyanStatus ZyrexInitialize(void);
+
+/**
+ * @brief   Releases global resources allocated by the `Zyrex` hook engine.
+ *
+ * @return  A zyan status code.
+ *
+ * No `Zyrex*` API function should be called after invoking this function.
+ */
+ZYREX_EXPORT ZyanStatus ZyrexShutdown(void);
+
+/* ---------------------------------------------------------------------------------------------- */
+/* Information                                                                                    */
+/* ---------------------------------------------------------------------------------------------- */
+
 /**
  * @brief   Returns the zyrex version.
  *
@@ -101,6 +128,8 @@ extern "C" {
  * returned version value.
  */
 ZYREX_EXPORT ZyanU64 ZyrexGetVersion(void);
+
+/* ---------------------------------------------------------------------------------------------- */
 
 /* ============================================================================================== */
 

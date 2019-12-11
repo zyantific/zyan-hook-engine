@@ -24,15 +24,51 @@
 
 ***************************************************************************************************/
 
+#include <Zycore/Zycore.h>
+#include <Zydis/Zydis.h>
 #include <Zyrex/Zyrex.h>
 
 /* ============================================================================================== */
 /* Exported functions                                                                             */
 /* ============================================================================================== */
 
+/* ---------------------------------------------------------------------------------------------- */
+/* Initialization & Finalization                                                                  */
+/* ---------------------------------------------------------------------------------------------- */
+
+ZyanStatus ZyrexInitialize(void)
+{
+    if (ZycoreGetVersion() != ZYCORE_VERSION)
+    {
+        return ZYAN_STATUS_MISSING_DEPENDENCY;    
+    }
+    if (ZydisGetVersion() != ZYDIS_VERSION)
+    {
+        return ZYAN_STATUS_MISSING_DEPENDENCY;     
+    }
+    if (!ZydisIsFeatureEnabled(ZYDIS_FEATURE_DECODER))
+    {
+        return ZYAN_STATUS_MISSING_DEPENDENCY;     
+    }
+
+    return ZYAN_STATUS_SUCCESS;
+}
+
+ZyanStatus ZyrexShutdown(void)
+{
+    // nothing to do here at the moment
+    return ZYAN_STATUS_SUCCESS;
+}
+
+/* ---------------------------------------------------------------------------------------------- */
+/* Information                                                                                    */
+/* ---------------------------------------------------------------------------------------------- */
+
 ZyanU64 ZyrexGetVersion(void)
 {
     return ZYREX_VERSION;
 }
+
+/* ---------------------------------------------------------------------------------------------- */
 
 /* ============================================================================================== */

@@ -380,7 +380,7 @@ static ZyanBool ZyrexShouldRewriteBranchInstruction(ZyrexRelocationContext* cont
  *          any memory inside the relocated code chunk or `ZYAN_STATUS_FALSE`, if not.
  *
  * The instruction should be redirected, if it would access any memory inside the relocated code
- * chunk. This prevents wrong data beeing read due to modifications of the instructions during the
+ * chunk. This prevents wrong data being read due to modifications of the instructions during the
  * relocation process.
  */
 static ZyanStatus ZyrexShouldRedirectMemoryInstruction(ZyrexRelocationContext* context,
@@ -760,17 +760,14 @@ static ZyanStatus ZyrexUpdateInstructionOffsets(ZyrexRelocationContext* context)
 /* Functions                                                                                      */
 /* ============================================================================================== */
 
-ZyanStatus ZyrexRelocateCode(const void* source, ZyanUSize source_length, void* destination, 
-    ZyanUSize destination_length, ZyanUSize min_bytes_to_reloc,  
-    ZyrexInstructionTranslationMap* translation_map, ZyanUSize* bytes_read, 
+ZyanStatus ZyrexRelocateCode(const void* source, ZyanUSize source_length, 
+    ZyrexTrampolineChunk* trampoline, ZyanUSize min_bytes_to_reloc, ZyanUSize* bytes_read, 
     ZyanUSize* bytes_written)
 {
     ZYAN_ASSERT(source);
     ZYAN_ASSERT(source_length);
-    ZYAN_ASSERT(destination);
-    ZYAN_ASSERT(destination_length);
+    ZYAN_ASSERT(trampoline);
     ZYAN_ASSERT(min_bytes_to_reloc);
-    ZYAN_ASSERT(translation_map);
     ZYAN_ASSERT(bytes_read);
     ZYAN_ASSERT(bytes_written);
 
@@ -778,9 +775,10 @@ ZyanStatus ZyrexRelocateCode(const void* source, ZyanUSize source_length, void* 
     context.bytes_to_reloc       = 0;
     context.source               = source;
     context.source_length        = source_length;
-    context.destination          = destination;
-    context.destination_length   = destination_length;
-    context.translation_map      = translation_map;
+    context.destination          = &trampoline->code_buffer;
+    context.destination_length   = ZYREX_TRAMPOLINE_MAX_CODE_SIZE + 
+                                   ZYREX_TRAMPOLINE_MAX_CODE_SIZE_BONUS;
+    context.translation_map      = &trampoline->translation_map;
     context.instructions_read    = 0;
     context.instructions_written = 0;
     context.bytes_read           = 0;

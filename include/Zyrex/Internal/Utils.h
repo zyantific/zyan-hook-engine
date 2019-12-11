@@ -24,8 +24,8 @@
 
 ***************************************************************************************************/
 
-#ifndef ZYREX_UTILS_H
-#define ZYREX_UTILS_H
+#ifndef ZYREX_INTERNAL_UTILS_H
+#define ZYREX_INTERNAL_UTILS_H
 
 #include <Zycore/Defines.h>
 #include <Zycore/Types.h>
@@ -207,4 +207,4 @@ ZYAN_INLINE ZyanStatus ZyrexCalcAbsoluteAddress(const ZydisDecodedInstruction* i
 }
 #endif
 
-#endif /* ZYREX_UTILS_H */
+#endif /* ZYREX_INTERNAL_UTILS_H */

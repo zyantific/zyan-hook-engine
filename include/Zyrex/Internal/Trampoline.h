@@ -24,8 +24,8 @@
 
 ***************************************************************************************************/
 
-#ifndef ZYREX_TRAMPOLINE_H
-#define ZYREX_TRAMPOLINE_H
+#ifndef ZYREX_INTERNAL_TRAMPOLINE_H
+#define ZYREX_INTERNAL_TRAMPOLINE_H
 
 #include <Zycore/Types.h>
 #include <Zyrex/Status.h>
@@ -92,10 +92,32 @@ extern "C" {
 /* ---------------------------------------------------------------------------------------------- */
 
 /**
+ * @brief   Defines the `ZyrexInstructionTranslationType` enum.
+ */
+typedef enum ZyrexInstructionTranslationType_
+{
+    /**
+     * @brief   This item represents a normal instruction.
+     */
+    ZYREX_TRANSLATION_TYPE_DEFAULT,
+    ///**
+    // * @brief   This item represents either the jump instruction from the original code to the
+    // *          trampoline or the backjump instruction from the trampoline to the original code.
+    // *
+    // * Depending on the case, the destination offset or the source offset should be ignored and the respective destination address used instead.
+    // */
+    //ZYREX_TRANSLATION_TYPE_REDIRECT
+} ZyrexInstructionTranslationType;
+
+/**
  * @brief   Defines the `ZyrexInstructionTranslationItem` struct.
  */
 typedef struct ZyrexInstructionTranslationItem_
 {
+    /**
+     * @brief   The type of the instruction translation item.
+     */
+    ZyrexInstructionTranslationType type;
     /**
      * @brief   The offset of a single instruction relative to the beginning of the source buffer.
      */
@@ -124,51 +146,59 @@ typedef struct ZyrexInstructionTranslationMap_
 } ZyrexInstructionTranslationMap;
 
 /* ---------------------------------------------------------------------------------------------- */
-/* Trampoline                                                                                     */
+/* Trampoline chunk                                                                               */
 /* ---------------------------------------------------------------------------------------------- */
 
 /**
- * @brief   Defines the `ZyrexTrampoline` struct.
+ * @brief   Defines the `ZyrexTrampolineChunk` struct.
  */
-typedef struct ZyrexTrampoline_
+typedef struct ZyrexTrampolineChunk_
 {
     /**
-     * @brief   The address of the hooked function.
+     * @brief   Signals, if the trampoline chunk is currently in use.
      */
-    const void* address_of_code;
+    ZyanBool is_used;
+
+#if defined(ZYAN_X64)
+
     /**
      * @brief   The address of the callback function.
      */
-    const void* address_of_callback;
-
-#ifdef ZYAN_X64
+    ZyanUPointer callback_address;
     /**
-     * @brief   The address of the jump to the callback function.
+     * @brief   The absolute jump to the callback function.
      */
-    const void* address_of_callback_jump;
+    ZyanU8 callback_jump[ZYREX_SIZEOF_ABSOLUTE_JUMP];
+
 #endif
 
     /**
-     * @brief   A pointer to the first instruction of the trampoline code.
+     * @brief   The backjump address.
      */
-    const void* address_of_trampoline_code;
+    ZyanUPointer backjump_address;
     /**
-     * @brief   A pointer to the first instruction of the saved original code instructions.
+     * @brief   The buffer that holds the trampoline code and the backjump to the hooked function.
      */
-    const void* address_of_original_code;
+    ZyanU8 code_buffer[ZYREX_TRAMPOLINE_MAX_CODE_SIZE_WITH_BACKJUMP + 
+                       ZYREX_TRAMPOLINE_MAX_CODE_SIZE_BONUS];
     /**
-     * @brief   The number of instruction bytes in the trampoline code buffer.
+     * @brief   The number of instruction bytes in the code buffer (not counting the backjump
+     *          instruction).
      */
-    ZyanU8 size_of_trampoline_code;
+    ZyanU8 code_buffer_size;
+    /**
+     * @brief   The instruction translation map.
+     */
+    ZyrexInstructionTranslationMap translation_map;
+    /**
+     * @brief   The buffer that holds the original instruction bytes saved from the hooked function.
+     */
+    ZyanU8 original_code[ZYREX_TRAMPOLINE_MAX_CODE_SIZE];
     /**
      * @brief   The number of instruction bytes saved from the hooked function.
      */
-    ZyanU8 size_of_original_code;
-    /**
-     * @brief   A pointer to the instruction translation map.
-     */
-    const ZyrexInstructionTranslationMap* translation_map;
-} ZyrexTrampoline;
+    ZyanU8 original_code_size;
+} ZyrexTrampolineChunk;
 
 /* ---------------------------------------------------------------------------------------------- */
 
@@ -186,21 +216,21 @@ typedef struct ZyrexTrampoline_
  *                              instruction used for hooking).
  *                              This function might copy more bytes on demand to keep individual
  *                              instructions intact.
- * @param   trampoline          Receives information about the newly created trampoline.
+ * @param   trampoline          Receives the newly created trampoline chunk.
  *
  * @return  A zyan status code.
  */
 ZyanStatus ZyrexTrampolineCreate(const void* address, const void* callback,
-    ZyanUSize min_bytes_to_reloc, ZyrexTrampoline* trampoline);
+    ZyanUSize min_bytes_to_reloc, ZyrexTrampolineChunk** trampoline);
 
 /**
  * @brief   Destroys the given trampoline.
  *
- * @param   trampoline  The trampoline.
+ * @param   trampoline  The trampoline chunk.
  *
  * @return  A zyan status code.
  */
-ZyanStatus ZyrexTrampolineFree(const ZyrexTrampoline* trampoline);
+ZyanStatus ZyrexTrampolineFree(ZyrexTrampolineChunk* trampoline);
 
 /* ============================================================================================== */
 
@@ -208,4 +238,4 @@ ZyanStatus ZyrexTrampolineFree(const ZyrexTrampoline* trampoline);
 }
 #endif
 
-#endif /* ZYREX_TRAMPOLINE_H */
+#endif /* ZYREX_INTERNAL_TRAMPOLINE_H */
