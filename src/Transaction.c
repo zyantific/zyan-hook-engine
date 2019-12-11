@@ -27,53 +27,114 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <Windows.h>
+#include <Zycore/Vector.h>
+#include <Zycore/Zycore.h>
+#include <Zydis/Zydis.h>
 #include <Zyrex/Transaction.h>
+#include <Zyrex/Internal/Trampoline.h>
 
 /* ============================================================================================== */
 /* Enums and types                                                                                */
 /* ============================================================================================== */
 
-typedef uint8_t ZyrexOperationType;
-
-enum ZyrexOperationTypes
+/**
+ * @brief   Defines the `ZyrexHookType` enum.
+ */
+typedef enum ZyrexHookType_
 {
-    ZYREX_OPERATION_TYPE_INLINE,
-    ZYREX_OPERATION_TYPE_EXCEPTION,
-    ZYREX_OPERATION_TYPE_CONTEXT
-};
+    /**
+     * @brief   Inline hook.
+     */
+    ZYREX_HOOK_TYPE_INLINE,
+    /**
+     * @brief   Exception hook.
+     */
+    ZYREX_HOOK_TYPE_EXCEPTION,
+    /**
+     * @brief   Context/HWBP hook.
+     */
+    ZYREX_HOOK_TYPE_CONTEXT
+} ZyrexHookType;
 
-typedef uint8_t ZyrexOperationAction;
-
-enum ZyrexOperationActions
+/**
+ * @brief   Defines the `ZyrexOperationAction` enum.
+ */
+typedef enum ZyrexOperationAction_
 {
+    /**
+     * @brief   Attach action.
+     */
     ZYREX_OPERATION_ACTION_ATTACH,
-    ZYREX_OPERATION_ACTION_REMOVE
-};
+    /**
+     * @brief   Removal action.
+     */
+     ZYREX_OPERATION_ACTION_REMOVE
+} ZyrexOperationAction;
 
+/**
+ * @brief   Defines the `ZyrexOperation` struct.
+ */
 typedef struct ZyrexOperation
 {
-    ZyrexOperationType type;
+    /**
+     * @brief   The hook type.
+     */
+    ZyrexHookType type;
+    /**
+     * @brief   The operation action.
+     */
     ZyrexOperationAction action;
-    struct ZyrexOperation* next;
+    /**
+     * @brief   The trampoline chunk.
+     */
+     ZyrexTrampolineChunk* trampoline;
 } ZyrexOperation;
-
-typedef struct ZyrexInlineOperation_
-{
-    ZyrexOperationType type;
-    ZyrexOperationAction action;
-    struct ZyrexOperation* next;
-    const void* trampoline;
-} ZyrexInlineOperation;
 
 /* ============================================================================================== */
 /* Globals                                                                                        */
 /* ============================================================================================== */
 
-static LONG         g_transaction_thread_id = 0;
-static ZyanStatus   g_transaction_error     = ZYAN_STATUS_SUCCESS;
-static void*        g_pending_operations    = NULL;
-static HANDLE*      g_pending_threads       = NULL;
-static size_t       g_pending_thread_count  = 0;
+/**
+ * @brief   Contains global transaction data.
+ */
+static struct
+{
+    /**
+     * @brief   Signals, if the transaction API is initialized.
+     */
+    ZyanBool is_initialized;
+    /**
+     * @brief   The id of the thread that started the current transaction.
+     */
+    volatile ZyanThreadId transaction_thread_id;
+    /**
+     * @brief   A list with all pending operations.
+     */
+    ZyanVector/*<ZyrexOperation>*/ pending_operations;
+    /**
+     * @brief   A list with all threads to update.
+     */
+    ZyanVector/*<HANDLE>*/ threads_to_update;
+} g_transaction_data =
+{
+    ZYAN_FALSE, 0, ZYAN_VECTOR_INITIALIZER, ZYAN_VECTOR_INITIALIZER
+};
+
+/* ============================================================================================== */
+/* Internal functions                                                                             */
+/* ============================================================================================== */
+
+/**
+ * @brief   Finalizes the given `HANDLE` item.
+ *
+ * @param   item    A pointer to the `HANDLE` item.
+ */
+static void ZyrexWindowsHandleDestroy(HANDLE* item)
+{
+    ZYAN_ASSERT(item);
+
+    CloseHandle(*item);
+}
 
 /* ============================================================================================== */
 /* Exported functions                                                                             */
@@ -81,46 +142,69 @@ static size_t       g_pending_thread_count  = 0;
 
 ZyanStatus ZyrexTransactionBegin()
 {
-    if (g_transaction_thread_id != 0)
+    if (g_transaction_data.transaction_thread_id != 0)
     {
         return ZYAN_STATUS_INVALID_OPERATION;
     }
-    if (InterlockedCompareExchange(&g_transaction_thread_id, (LONG)GetCurrentThreadId(), 0) != 0)
+
+    if (InterlockedCompareExchange((volatile LONG*)&g_transaction_data.transaction_thread_id,
+        (LONG)GetCurrentThreadId(), 0) != 0)
     {
         return ZYAN_STATUS_INVALID_OPERATION;
     }
-    g_transaction_error   = ZYAN_STATUS_SUCCESS;
-    g_pending_operations  = NULL;
-    g_pending_threads     = NULL;
-    g_pending_thread_count = 0;
+
+    if (!g_transaction_data.is_initialized)
+    {
+        ZYAN_CHECK(ZyanVectorInit(&g_transaction_data.pending_operations, sizeof(ZyrexOperation),
+            16, ZYAN_NULL));
+
+        const ZyanStatus status = ZyanVectorInit(&g_transaction_data.threads_to_update, 
+            sizeof(HANDLE), 16, (ZyanMemberProcedure)&ZyrexWindowsHandleDestroy);
+        if (!ZYAN_SUCCESS(status))
+        {
+            ZyanVectorDestroy(&g_transaction_data.pending_operations);
+            return status;
+        }
+
+        g_transaction_data.is_initialized = ZYAN_TRUE;
+    }
+
     return ZYAN_STATUS_SUCCESS;
 }
 
-ZyanStatus ZyrexUpdateThread(ZyanThread thread_handle)
+ZyanStatus ZyrexUpdateThread(DWORD thread_id)
 {
-    if (ZYAN_SUCCESS(g_transaction_error))
+    if (g_transaction_data.transaction_thread_id != GetCurrentThreadId())
     {
-        return g_transaction_error;
+        return ZYAN_STATUS_INVALID_OPERATION;
     }
-    if (thread_handle == GetCurrentThread())
+    if (!g_transaction_data.is_initialized)
+    {
+        return ZYAN_STATUS_INVALID_OPERATION;
+    }
+
+    if (thread_id == GetCurrentThreadId())
     {
         return ZYAN_STATUS_SUCCESS;
     }
-    const void* memory = realloc(g_pending_threads, sizeof(HANDLE) * (g_pending_thread_count + 1));
-    if (!memory)
+
+    const DWORD desired_access = THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT;
+    const HANDLE handle = OpenThread(desired_access, ZYAN_FALSE, thread_id);
+    if (handle == ZYAN_NULL)
     {
-        if (g_pending_threads)
-        {
-            free(g_pending_threads);
-        }
-        return ZYAN_STATUS_NOT_ENOUGH_MEMORY;
+        return ZYAN_STATUS_INVALID_ARGUMENT;    
     }
-    g_pending_threads = (HANDLE*)memory;
-    g_pending_threads[g_pending_thread_count++] = thread_handle;
-    if (SuspendThread(thread_handle) == (DWORD)-1)
+    if (SuspendThread(handle) == (DWORD)(-1))
     {
-        return ZYAN_STATUS_BAD_SYSTEMCALL;
+        CloseHandle(handle);
+        return ZYAN_STATUS_BAD_SYSTEMCALL;        
     }
+
+    return ZyanVectorPushBack(&g_transaction_data.threads_to_update, &handle);
+}
+
+ZyanStatus ZyrexUpdateAllThreads()
+{
     return ZYAN_STATUS_SUCCESS;
 }
 
@@ -137,16 +221,27 @@ ZyanStatus ZyrexTransactionCommitEx(const void** failed_operation)
 
 ZyanStatus ZyrexTransactionAbort()
 {
-    if (g_transaction_thread_id != (LONG)GetCurrentThreadId())
+    if (g_transaction_data.transaction_thread_id != GetCurrentThreadId())
     {
         return ZYAN_STATUS_INVALID_OPERATION;
     }
-    if (g_pending_threads)
+    if (!g_transaction_data.is_initialized)
     {
-        free(g_pending_threads);
+        return ZYAN_STATUS_INVALID_OPERATION;
     }
-    // ..
-    g_transaction_thread_id = 0;
+
+    ZYAN_VECTOR_FOREACH_MUTABLE(ZyrexOperation, &g_transaction_data.pending_operations, operation, 
+    {
+        ZyrexTrampolineFree(operation->trampoline);
+    });
+
+    ZYAN_VECTOR_FOREACH(HANDLE, &g_transaction_data.threads_to_update, handle, 
+    {
+        ResumeThread(handle);
+    });
+
+    g_transaction_data.transaction_thread_id  = 0;
+
     return ZYAN_STATUS_SUCCESS;
 }
 

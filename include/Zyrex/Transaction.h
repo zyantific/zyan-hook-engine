@@ -64,16 +64,32 @@ extern "C" {
 ZYREX_EXPORT ZyanStatus ZyrexTransactionBegin();
 
 /**
- * @brief   Adds a thread to the update list.
+ * @brief   Adds a specific thread to the thread-update list.
  *
- * @param   thread_handle   The handle of the thread.
+ * The given thread is immediately suspended and resumed after the transaction was either committed
+ * or canceled.
+ *
+ * @param   thread_id   The id of the thread to add to the update list.
  *
  * @return  A zyan status code.
  */
-ZYREX_EXPORT ZyanStatus ZyrexUpdateThread(ZyanThread thread_handle);
+ZYREX_EXPORT ZyanStatus ZyrexUpdateThread(DWORD thread_id);
+
+/**
+ * @brief   Adds all threads (except the calling one) to the update list.
+ *
+ * All threads are immediately suspended and resumed after the transaction was either committed
+ * or canceled.
+ *
+ * @return  A zyan status code.
+ */
+ZYREX_EXPORT ZyanStatus ZyrexUpdateAllThreads();
 
 /**
  * @brief   Commits the current transaction.
+ *
+ * This function performs all pending hook attach/remove operations and updates all threads in the
+ * thread-update list.
  *
  * @return  A zyan status code.
  */
