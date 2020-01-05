@@ -682,10 +682,10 @@ static ZyanStatus ZyrexTrampolineChunkInit(ZyrexTrampolineChunk* chunk, const vo
     ZYAN_ASSERT(min_bytes_to_reloc <= max_bytes_to_read);
 
     chunk->is_used = ZYAN_TRUE;
+    chunk->callback_address = (ZyanUPointer)callback;
 
 #if defined(ZYAN_X64)
-
-    chunk->callback_address = (ZyanUPointer)callback;
+    
     ZyrexWriteAbsoluteJump(&chunk->callback_jump, (ZyanUPointer)&chunk->callback_address);
     if (!FlushInstructionCache(GetCurrentProcess(), &chunk->callback_jump, 
         ZYREX_SIZEOF_ABSOLUTE_JUMP))

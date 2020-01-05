@@ -158,13 +158,13 @@ typedef struct ZyrexTrampolineChunk_
      * @brief   Signals, if the trampoline chunk is currently in use.
      */
     ZyanBool is_used;
-
-#if defined(ZYAN_X64)
-
     /**
      * @brief   The address of the callback function.
      */
     ZyanUPointer callback_address;
+
+#if defined(ZYAN_X64)
+
     /**
      * @brief   The absolute jump to the callback function.
      */

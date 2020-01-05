@@ -115,17 +115,18 @@ ZYREX_EXPORT ZyanStatus ZyrexTransactionAbort();
 /* Hook installation                                                                              */
 /* ---------------------------------------------------------------------------------------------- */
 
-///**
-// * @brief   Attaches an inline hook.
-// *
-// * @param   address     Pointer to the code address. Receives the trampoline address, if the
-// *                      transaction succeeded.
-// * @param   callback    The callback address.
-// *
-// * @return  A zyan status code.
-// */
-//ZYREX_EXPORT ZyanStatus ZyrexAttachInlineHook(const void** address, const void* callback);
-//
+/**
+ * @brief   Installs an inline hook at the given `address`.
+ *
+ * @param   address     The address to hook.
+ * @param   callback    The callback address.
+ * @param   original    Receives the address of the original function, if the operation succeeded.
+ *
+ * @return  A zyan status code.                                                                  
+ */
+ZYREX_EXPORT ZyanStatus ZyrexInstallInlineHook(void* address, const void* callback, 
+    ZyanConstVoidPointer* original);
+
 ///**
 // * @brief   Attaches an exception hook.
 // *
@@ -154,7 +155,15 @@ ZYREX_EXPORT ZyanStatus ZyrexTransactionAbort();
 /* Hook removal                                                                                   */
 /* ---------------------------------------------------------------------------------------------- */
 
-// TODO:
+/**
+ * @brief   Removes an inline hook at the given `address`.
+ *
+ * @param   address     The address to unhook.
+ * @param   original    Receives the address of the original function, if the operation succeeded.
+ *
+ * @return  A zyan status code.                                                                  
+ */
+ZYREX_EXPORT ZyanStatus ZyrexRemoveInlineHook(void* address, ZyanConstVoidPointer* original);
 
 /* ---------------------------------------------------------------------------------------------- */
 
