@@ -42,7 +42,12 @@ extern "C" {
 /* Attaching and detaching                                                                        */
 /* ---------------------------------------------------------------------------------------------- */
 
-ZyanStatus ZyrexAttachInlineHook(void* address, const void* callback);
+
+#include <Windows.h>
+
+ZyanStatus ZyrexMigrateThread(DWORD thread_id, const void* source, ZyanUSize source_length, 
+    const void* destination, ZyanUSize destination_length, 
+    const ZyrexInstructionTranslationMap* translation_map);
 
 /* ---------------------------------------------------------------------------------------------- */
 
