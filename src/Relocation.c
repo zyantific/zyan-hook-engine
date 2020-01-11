@@ -514,24 +514,19 @@ static ZyanStatus ZyrexRelocateRelativeBranchInstruction(ZyrexRelocationContext*
             *(address + instruction->instruction.raw.imm[0].offset) = 0x02;
             address += instruction->instruction.length;
 
+            ZyrexUpdateRelocationContext(context, instruction->instruction.length, 
+                (ZyanU8)context->bytes_read, (ZyanU8)context->bytes_written);
+
             // Generate `JMP` to `0` branch
             *address++ = 0xEB;
             *address++ = 0x05;
+            ZyrexUpdateRelocationContext(context, 2, (ZyanU8)context->bytes_read, 
+                (ZyanU8)context->bytes_written + instruction->instruction.length);
 
             // Generate `JMP` to `1` branch
             ZyrexWriteRelativeJump(address, instruction->absolute_target_address);
-            address += 5;
-
-            // Update relocation context
-
-            // TODO: Correctly update translation-map and instructions_written
-            // TODO: At the moment we can't substitute a single instruction with multiple ones as this would
-            // TODO: confuse the `ZyrexUpdateInstructionOffsets` function
-
-            const ZyanUSize bytes_written = 
-                address - ((ZyanU8*)context->destination + context->bytes_written);
-            ZyrexUpdateRelocationContext(context, bytes_written, 
-                (ZyanU8)context->bytes_read, (ZyanU8)context->bytes_written);
+            ZyrexUpdateRelocationContext(context, 2, (ZyanU8)context->bytes_read, 
+                (ZyanU8)context->bytes_written + instruction->instruction.length + 2);
 
             return ZYAN_STATUS_SUCCESS;
         }
@@ -690,6 +685,39 @@ static ZyanStatus ZyrexRelocateRelativeInstruction(ZyrexRelocationContext* conte
 }
 
 /**
+ * @brief   Takes the offset of an instruction in the source buffer and returns the offset of the
+ *          same instruction in the destination buffer.
+ *
+ * @param   context             A pointer to the `ZyrexRelocationContext` struct.
+ * @param   offset_source       The offset of the instruction in the source buffer.
+ * @param   offset_destination  Receives the offset of the instruction in the destination buffer.
+ *
+ * If the source instruction has been rewritten into a code-block of multiple instructions, the
+ * offset of the first instruction is returned.
+ *
+ * @return  A zyan status code.
+ */
+static ZyanStatus ZyrexGetRelocatedInstructionOffset(ZyrexRelocationContext* context, 
+    ZyanU8 offset_source, ZyanU8* offset_destination)
+{
+    ZYAN_ASSERT(context);
+    ZYAN_ASSERT(offset_destination);
+    ZYAN_ASSERT(context->instructions.size <= context->translation_map->count);
+
+    for (ZyanUSize i = 0; i < context->translation_map->count; ++i)
+    {
+        const ZyrexInstructionTranslationItem* item = &context->translation_map->items[i];
+        if (item->offset_source == offset_source)
+        {
+            *offset_destination = item->offset_destination;
+            return ZYAN_STATUS_SUCCESS;
+        }
+    }
+
+    return ZYAN_STATUS_NOT_FOUND;
+}
+
+/**
  * @brief   Updates the offsets of instructions with relative offsets pointing to instructions
  *          inside the relocated code.
  *
@@ -699,7 +727,7 @@ static ZyanStatus ZyrexRelocateRelativeInstruction(ZyrexRelocationContext* conte
  *
  * As some of the instructions might have been enlarged or rewritten, there is a chance that the
  * relative offset of previous instructions does not point to the correct target any longer. This
- * function compensates for any instruction shifts happened during the relocation process.
+ * function compensates all instruction shifts happened during the relocation process.
  */
 static ZyanStatus ZyrexUpdateInstructionOffsets(ZyrexRelocationContext* context)
 {
@@ -707,11 +735,13 @@ static ZyanStatus ZyrexUpdateInstructionOffsets(ZyrexRelocationContext* context)
 
     for (ZyanUSize i = 0; i < context->instructions.size; ++i)
     {
-        const ZyrexAnalyzedInstruction* const item = ZyanVectorGet(&context->instructions, i);
-        ZYAN_ASSERT(item);
+        const ZyrexAnalyzedInstruction* const instruction = 
+            ZyanVectorGet(&context->instructions, i);
 
-        if (!item->has_relative_target || item->has_external_target)
+        if (!instruction->has_relative_target || instruction->has_external_target)
         {
+            // The instruction does not have a relative target or the relative offset is pointing
+            // to an address outside of the destination buffer
             continue;
         }
 
@@ -722,30 +752,40 @@ static ZyanStatus ZyrexUpdateInstructionOffsets(ZyrexRelocationContext* context)
 
         ZyanU8 offset = 0;
         ZyanU8 size   = 0;
-        if (ZyrexIsRelativeBranchInstruction(&item->instruction))
+        if (ZyrexIsRelativeBranchInstruction(&instruction->instruction))
         {
-            offset = item->instruction.raw.imm[0].offset;
-            size   = item->instruction.raw.imm[0].size;
+            offset = instruction->instruction.raw.imm[0].offset;
+            size   = instruction->instruction.raw.imm[0].size;
         }
-        if (ZyrexIsRelativeMemoryInstruction(&item->instruction))
+        if (ZyrexIsRelativeMemoryInstruction(&instruction->instruction))
         {
-            offset = item->instruction.raw.disp.offset;
-            size   = item->instruction.raw.disp.size;
+            offset = instruction->instruction.raw.disp.offset;
+            size   = instruction->instruction.raw.disp.size;
         }
+        ZYAN_ASSERT(size > 0);
 
-        const ZyanU8 source_offset = context->translation_map->items[i].offset_destination;
-        const ZyanU8 destination_offset = 
-            context->translation_map->items[item->outgoing].offset_destination;
+        // Lookup the offset of the instruction in the destination buffer
+        ZyanU8 offset_instruction;
+        ZYAN_CHECK(ZyrexGetRelocatedInstructionOffset(context, (ZyanU8)instruction->address_offset, 
+            &offset_instruction));
 
-        void* const offset_address = (ZyanU8*)context->destination + source_offset + offset;
-        const ZyanI32 value = ZyrexCalculateRelativeOffset(item->instruction.length, 
-            source_offset, destination_offset);
+        // Lookup the offset of the destination instruction in the destination buffer
+        const ZyrexAnalyzedInstruction* const destination = 
+            ZyanVectorGet(&context->instructions, instruction->outgoing);
+        ZYAN_ASSERT(destination);
+        ZyanU8 offset_destination;
+        ZYAN_CHECK(ZyrexGetRelocatedInstructionOffset(context, (ZyanU8)destination->address_offset, 
+            &offset_destination));
+
+        void* const address_of_offset = (ZyanU8*)context->destination + offset_instruction + offset;
+        const ZyanI32 value = ZyrexCalculateRelativeOffset(instruction->instruction.length, 
+            offset_instruction, offset_destination);
 
         switch (size)
         {
-        case  8: *((ZyanI8* )offset_address) = (ZyanI8 )value; break;
-        case 16: *((ZyanI16*)offset_address) = (ZyanI16)value; break;
-        case 32: *((ZyanI32*)offset_address) = (ZyanI32)value; break;
+        case  8: *((ZyanI8* )address_of_offset) = (ZyanI8 )value; break;
+        case 16: *((ZyanI16*)address_of_offset) = (ZyanI16)value; break;
+        case 32: *((ZyanI32*)address_of_offset) = (ZyanI32)value; break;
         default:
             ZYAN_UNREACHABLE;
         }
