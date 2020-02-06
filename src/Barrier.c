@@ -72,7 +72,7 @@ typedef struct ZyrexBarrierContext_
 /* ---------------------------------------------------------------------------------------------- */
 
 /**
- * @brief   This function is invoked everytime a thread exists.
+ * @brief   This function is invoked every time a thread exists.
  *
  * @param   data    The data currently stored in the TLS slot.
  */
@@ -97,7 +97,7 @@ ZYAN_THREAD_DECLARE_TLS_CALLBACK(ZyrexBarrierTlsCleanup, ZyanVector, data)
  * @brief   Defines a comparison function for the `ZyrexBarrierContext` struct that uses the `id`
  *          field to create an absolute order.
  */
-ZYAN_DECLARE_COMPARISON_FOR_FIELD(ZyrexBarrierCompareContext, ZyrexBarrierContext, id);
+ZYAN_DECLARE_COMPARISON_FOR_FIELD(ZyrexBarrierCompareContext, ZyrexBarrierContext, id)
 
 /* ---------------------------------------------------------------------------------------------- */
 
@@ -190,7 +190,7 @@ ZyanStatus ZyrexBarrierLeave(ZyrexBarrierHandle handle)
     ZyanUSize found_index;
     const ZyanStatus status =
         ZyanVectorBinarySearch(vector, &context_element, &found_index,
-        (ZyanComparison)&ZyrexBarrierCompareContext);
+            (ZyanComparison)&ZyrexBarrierCompareContext);
     ZYAN_CHECK(status);
 
     if (status != ZYAN_STATUS_TRUE)
@@ -234,7 +234,7 @@ ZyanStatus ZyrexBarrierGetRecursionDepth(ZyrexBarrierHandle handle, ZyanU32* cur
     ZyanUSize found_index;
     const ZyanStatus status =
         ZyanVectorBinarySearch(vector, &context_element, &found_index,
-        (ZyanComparison)&ZyrexBarrierCompareContext);
+            (ZyanComparison)&ZyrexBarrierCompareContext);
     ZYAN_CHECK(status);
 
     if (status == ZYAN_STATUS_TRUE)

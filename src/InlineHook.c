@@ -24,7 +24,6 @@
 
 ***************************************************************************************************/
 
-#include <windows.h>
 #include <Zycore/LibC.h>
 #include <Zyrex/Internal/InlineHook.h>
 #include <Zyrex/Internal/Utils.h>
@@ -36,6 +35,8 @@
 /* ---------------------------------------------------------------------------------------------- */
 /* Runtime thread migration                                                                       */
 /* ---------------------------------------------------------------------------------------------- */
+
+#ifdef ZYAN_WINDOWS
 
 ZyanStatus ZyrexMigrateThread(DWORD thread_id, const void* source, ZyanUSize source_length, 
     const void* destination, ZyanUSize destination_length, 
@@ -128,6 +129,8 @@ CleanupAndResume:
 
     return status;
 }
+
+#endif
 
 /* ---------------------------------------------------------------------------------------------- */
 /* Attaching and detaching                                                                        */

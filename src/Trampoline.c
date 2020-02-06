@@ -24,12 +24,23 @@
 
 ***************************************************************************************************/
 
-#include <Windows.h>
+#include <Zycore/Defines.h>
 #include <Zycore/LibC.h>
 #include <Zycore/Vector.h>
+#include <Zycore/API/Memory.h>
+#include <Zycore/API/Process.h>
 #include <Zydis/Zydis.h>
 #include <Zyrex/Internal/Relocation.h>
 #include <Zyrex/Internal/Trampoline.h>
+
+#if   defined(ZYAN_WINDOWS)
+#   include <Windows.h>
+#elif defined(ZYAN_POSIX)
+#   include <unistd.h>
+#   include <sys/mman.h>
+#else
+#   error "Unsupported platform detected"
+#endif
 
 /* ============================================================================================== */
 /* Enums and types                                                                                */
@@ -323,6 +334,11 @@ static ZyanBool ZyrexTrampolineRegionFindChunkInRegion(ZyrexTrampolineRegion* re
     // Skip the first chunk as it shares memory with the region-header
     for (ZyanUSize i = 1; i < g_trampoline_data.chunks_per_region; ++i)
     {
+        if (region->chunks[i].is_used)
+        {
+            continue;
+        }
+
         const ZyanIPointer chunk_base = (ZyanIPointer)&region->chunks[i];
 
         const ZyanIPointer distance_lo_chunk = chunk_base - (ZyanIPointer)address_lo +
@@ -485,13 +501,8 @@ static ZyanStatus ZyrexTrampolineRegionProtect(ZyrexTrampolineRegion* region)
     ZYAN_ASSERT(g_trampoline_data.is_initialized);
     ZYAN_ASSERT(ZYAN_IS_ALIGNED_TO((ZyanUPointer)region, g_trampoline_data.region_size));
 
-    DWORD old_value;
-    if (!VirtualProtect(region, sizeof(ZyrexTrampolineChunk), PAGE_EXECUTE_READ, &old_value))
-    {
-        return ZYAN_STATUS_BAD_SYSTEMCALL;
-    }
-
-    return ZYAN_STATUS_SUCCESS;
+    return ZyanMemoryVirtualProtect(region, sizeof(ZyrexTrampolineChunk), 
+        ZYAN_PAGE_EXECUTE_READ);
 }
 
 /**
@@ -507,13 +518,8 @@ static ZyanStatus ZyrexTrampolineRegionUnprotect(ZyrexTrampolineRegion* region)
     ZYAN_ASSERT(g_trampoline_data.is_initialized);
     ZYAN_ASSERT(ZYAN_IS_ALIGNED_TO((ZyanUPointer)region, g_trampoline_data.region_size));
 
-    DWORD old_value;
-    if (!VirtualProtect(region, sizeof(ZyrexTrampolineChunk), PAGE_EXECUTE_READWRITE, &old_value))
-    {
-        return ZYAN_STATUS_BAD_SYSTEMCALL;
-    }
-
-    return ZYAN_STATUS_SUCCESS;
+    return ZyanMemoryVirtualProtect(region, sizeof(ZyrexTrampolineChunk),
+        ZYAN_PAGE_EXECUTE_READWRITE);
 }
 
 /**
@@ -534,6 +540,8 @@ static ZyanStatus ZyrexTrampolineRegionAllocate(ZyanUPointer address_lo, ZyanUPo
     ZYAN_ASSERT(region);
     ZYAN_ASSERT(g_trampoline_data.is_initialized);
 
+#ifdef ZYAN_WINDOWS
+
     SYSTEM_INFO system_info;
     GetSystemInfo(&system_info);
 
@@ -546,8 +554,12 @@ static ZyanStatus ZyrexTrampolineRegionAllocate(ZyanUPointer address_lo, ZyanUPo
 
     MEMORY_BASIC_INFORMATION memory_info;
 
+#endif
+
     while (ZYAN_TRUE)
     {
+#ifdef ZYAN_WINDOWS
+
         // Skip reserved address regions
         if (alloc_address_lo < (ZyanU8*)system_info.lpMinimumApplicationAddress)
         {
@@ -573,6 +585,11 @@ static ZyanStatus ZyrexTrampolineRegionAllocate(ZyanUPointer address_lo, ZyanUPo
             alloc_address_lo = 
                 (const ZyanU8*)(ZYAN_ALIGN_DOWN((ZyanUPointer)alloc_address_lo, region_size));
         }
+
+//#endif
+
+        // TODO: Only `RESERVE` the memory region and `COMMIT` pages on demand to reduce memory
+        // TODO: imprint
 
         ZyanU8 c = 0;
 
@@ -620,13 +637,19 @@ static ZyanStatus ZyrexTrampolineRegionAllocate(ZyanUPointer address_lo, ZyanUPo
         {
             return ZYAN_STATUS_OUT_OF_RANGE;
         }
+#else
+        ZYAN_UNUSED(address_lo);
+        ZYAN_UNUSED(address_hi);
+#endif
     }
 
     // ZYAN_UNREACHABLE;
 
+#ifdef ZYAN_WINDOWS
 InitializeRegion:
     (*region)->header.signature = ZYREX_TRAMPOLINE_REGION_SIGNATURE;
     (*region)->header.number_of_unused_chunks = g_trampoline_data.chunks_per_region - 1;
+#endif
 
     return ZYAN_STATUS_SUCCESS;
 }
@@ -644,12 +667,7 @@ static ZyanStatus ZyrexTrampolineRegionFree(ZyrexTrampolineRegion* region)
     ZYAN_ASSERT(g_trampoline_data.is_initialized);
     ZYAN_ASSERT(ZYAN_IS_ALIGNED_TO((ZyanUPointer)region, g_trampoline_data.region_size));
 
-    if (!VirtualFree(region, 0, MEM_RELEASE))
-    {
-        return ZYAN_STATUS_BAD_SYSTEMCALL;
-    }
-
-    return ZYAN_STATUS_SUCCESS;
+    return ZyanMemoryVirtualFree(region, g_trampoline_data.region_size);
 }
 
 /* ---------------------------------------------------------------------------------------------- */
@@ -687,11 +705,8 @@ static ZyanStatus ZyrexTrampolineChunkInit(ZyrexTrampolineChunk* chunk, const vo
 #if defined(ZYAN_X64)
     
     ZyrexWriteAbsoluteJump(&chunk->callback_jump, (ZyanUPointer)&chunk->callback_address);
-    if (!FlushInstructionCache(GetCurrentProcess(), &chunk->callback_jump, 
-        ZYREX_SIZEOF_ABSOLUTE_JUMP))
-    {
-        return ZYAN_STATUS_BAD_SYSTEMCALL;   
-    }
+    ZYAN_CHECK(ZyanProcessFlushInstructionCache(&chunk->callback_jump, 
+        ZYREX_SIZEOF_ABSOLUTE_JUMP));
 
 #endif
 
@@ -715,11 +730,8 @@ static ZyanStatus ZyrexTrampolineChunkInit(ZyrexTrampolineChunk* chunk, const vo
             bytes_remaining - ZYREX_SIZEOF_ABSOLUTE_JUMP);
     }
 
-    if (!FlushInstructionCache(GetCurrentProcess(), &chunk->code_buffer, 
-        ZYREX_TRAMPOLINE_MAX_CODE_SIZE_WITH_BACKJUMP + ZYREX_TRAMPOLINE_MAX_CODE_SIZE_BONUS))
-    {
-        return ZYAN_STATUS_BAD_SYSTEMCALL;   
-    }
+    ZYAN_CHECK(ZyanProcessFlushInstructionCache(&chunk->code_buffer, 
+        ZYREX_TRAMPOLINE_MAX_CODE_SIZE_WITH_BACKJUMP + ZYREX_TRAMPOLINE_MAX_CODE_SIZE_BONUS));
 
     // Backup original instructions
     ZYAN_ASSERT(bytes_read <= ZYAN_ARRAY_LENGTH(chunk->original_code));
@@ -735,6 +747,10 @@ static ZyanStatus ZyrexTrampolineChunkInit(ZyrexTrampolineChunk* chunk, const vo
 /* Public functions                                                                               */
 /* ============================================================================================== */
 
+/* ---------------------------------------------------------------------------------------------- */
+/* Creation and destruction                                                                       */
+/* ---------------------------------------------------------------------------------------------- */
+
 ZyanStatus ZyrexTrampolineCreate(const void* address, const void* callback,
     ZyanUSize min_bytes_to_reloc, ZyrexTrampolineChunk** trampoline)
 {
@@ -745,20 +761,20 @@ ZyanStatus ZyrexTrampolineCreate(const void* address, const void* callback,
 
     // Check if the memory region of the target function has enough space for the hook code
     ZyanUSize source_size = ZYREX_TRAMPOLINE_MAX_CODE_SIZE;
+#ifdef ZYAN_WINDOWS
     ZYAN_CHECK(ZyrexGetSizeOfReadableMemoryRegion(address, &source_size));
     if (source_size < min_bytes_to_reloc)
     {
         return ZYAN_STATUS_INVALID_OPERATION;
     }
+#endif
 
     if (!g_trampoline_data.is_initialized)
     {
         ZYAN_CHECK(ZyanVectorInit(&g_trampoline_data.regions, sizeof(ZyrexTrampolineRegion*), 8, 
             ZYAN_NULL));
 
-        SYSTEM_INFO system_info;
-        GetSystemInfo(&system_info);
-        g_trampoline_data.region_size = system_info.dwAllocationGranularity;
+        g_trampoline_data.region_size = ZyanMemoryGetSystemAllocationGranularity();
         g_trampoline_data.chunks_per_region =
             g_trampoline_data.region_size / sizeof(ZyrexTrampolineChunk);
 
@@ -866,7 +882,7 @@ ZyanStatus ZyrexTrampolineFree(ZyrexTrampolineChunk* trampoline)
         g_trampoline_data.region_size);
     ZyanUSize found_index;
     const ZyanStatus status =
-        ZyanVectorBinarySearch(&g_trampoline_data.regions, &region_address, &found_index,
+        ZyanVectorBinarySearch(&g_trampoline_data.regions, &region_address, &found_index, 
             (ZyanComparison)&ZyanComparePointer);
     ZYAN_CHECK(status);
 
@@ -899,5 +915,63 @@ ZyanStatus ZyrexTrampolineFree(ZyrexTrampolineChunk* trampoline)
 
     return ZYAN_STATUS_SUCCESS;
 }
+
+/* ---------------------------------------------------------------------------------------------- */
+/* Searching                                                                                      */
+/* ---------------------------------------------------------------------------------------------- */
+
+ZyanStatus ZyrexTrampolineFind(const void* original, ZyrexTrampolineChunk** trampoline)
+{
+    if (!original || !trampoline)
+    {
+        return ZYAN_STATUS_INVALID_ARGUMENT;
+    }
+    if (!g_trampoline_data.is_initialized)
+    {
+        return ZYAN_STATUS_INVALID_OPERATION;
+    }
+
+    const ZyanUPointer region_address = ZYAN_ALIGN_DOWN((ZyanUPointer)original, 
+        g_trampoline_data.region_size);
+
+    ZyanUSize found_index;
+    const ZyanStatus status = 
+        ZyanVectorBinarySearch(&g_trampoline_data.regions, &region_address, &found_index, 
+            (ZyanComparison)&ZyanComparePointer);
+    ZYAN_CHECK(status);
+    
+    if (status == ZYAN_STATUS_FALSE)
+    {
+        return ZYAN_STATUS_FALSE;
+    }
+
+    ZyrexTrampolineRegion** const element = 
+        ZyanVectorGetMutable(&g_trampoline_data.regions, found_index);
+    ZYAN_ASSERT(element && *element);
+
+    ZyrexTrampolineRegion* const region = *element;
+    ZYAN_ASSERT(region->header.signature == ZYREX_TRAMPOLINE_REGION_SIGNATURE);
+
+    for (ZyanUSize i = 1; i < g_trampoline_data.chunks_per_region; ++i)
+    {
+        ZyrexTrampolineChunk* const chunk = &region->chunks[i];
+        ZYAN_ASSERT(chunk);
+
+        if (!chunk->is_used)
+        {
+            continue;
+        }
+
+        if ((ZyanUPointer)&chunk->code_buffer == (ZyanUPointer)original)
+        {
+            *trampoline = chunk;
+            return ZYAN_STATUS_TRUE;
+        }
+    }
+
+    return ZYAN_STATUS_FALSE;
+}
+
+/* ---------------------------------------------------------------------------------------------- */
 
 /* ============================================================================================== */

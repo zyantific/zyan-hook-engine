@@ -41,6 +41,66 @@ extern "C" {
 /* ============================================================================================== */
 
 /* ---------------------------------------------------------------------------------------------- */
+/* Hook type                                                                                      */
+/* ---------------------------------------------------------------------------------------------- */
+
+/**
+ * @brief   Defines the `ZyrexHookType` enum.
+ */
+typedef enum ZyrexHookType_
+{
+    /**
+     * @brief   Inline hook.
+     *
+     * The inline hook uses a `jmp` instruction at the begin of the target function to redirect
+     * code-fow to the callback function.
+     */
+    ZYREX_HOOK_TYPE_INLINE,
+    /**
+     * @brief   Exception hook.
+     *
+     * The exception hook uses a privileged instruction at the begin of the target function to
+     * cause an exception which is later catched by an unhandled-exception-handler that redirects
+     * code-flow to the callback function by modifying the instruction-pointer register of the
+     * calling thread.
+     */
+    ZYREX_HOOK_TYPE_EXCEPTION,
+    /**
+     * @brief   Context/HWBP hook.
+     *
+     * The context/HWBP hook modifies the x86-64 debug registers to cause an exception which is
+     * later catched by an unhandled-exception-handler that redirects code-flow to the callback
+     * function by modifying the instruction-pointer register of the calling thread.
+     *
+     * This hook 
+     */
+    ZYREX_HOOK_TYPE_CONTEXT
+} ZyrexHookType;
+
+/* ---------------------------------------------------------------------------------------------- */
+/* Hook                                                                                           */
+/* ---------------------------------------------------------------------------------------------- */
+
+/**
+ * @brief   Defines the `ZyrexHook` struct.
+ *
+ * All fields in this struct should be considered as "private". Any changes may lead to unexpected
+ * behavior.
+ */
+typedef struct ZyrexHook_
+{
+    /**
+     * @brief   The hook type - just for reference.
+     */
+    ZyrexHookType type;
+    /**
+     * @brief   The address of the hooked function.
+     */
+    void* address;
+
+} ZyrexHook;
+
+/* ---------------------------------------------------------------------------------------------- */
 /* Hook operation                                                                                 */
 /* ---------------------------------------------------------------------------------------------- */
 
@@ -66,8 +126,8 @@ ZYREX_EXPORT ZyanStatus ZyrexTransactionBegin();
 /**
  * @brief   Adds a specific thread to the thread-update list.
  *
- * The given thread is immediately suspended and resumed after the transaction was either committed
- * or canceled.
+ * The given thread is immediately suspended and later on resumed after the transaction was either
+ * been committed or canceled.
  *
  * @param   thread_id   The id of the thread to add to the update list.
  *
@@ -78,8 +138,8 @@ ZYREX_EXPORT ZyanStatus ZyrexUpdateThread(DWORD thread_id);
 /**
  * @brief   Adds all threads (except the calling one) to the update list.
  *
- * All threads are immediately suspended and resumed after the transaction was either committed
- * or canceled.
+ * All threads are immediately suspended and later on resumed after the transaction was either
+ * been committed or canceled.
  *
  * @return  A zyan status code.
  */
@@ -88,7 +148,7 @@ ZYREX_EXPORT ZyanStatus ZyrexUpdateAllThreads();
 /**
  * @brief   Commits the current transaction.
  *
- * This function performs all pending hook attach/remove operations and updates all threads in the
+ * This function performs the pending hook attach/remove operations and updates all threads in the
  * thread-update list.
  *
  * @return  A zyan status code.
@@ -120,12 +180,13 @@ ZYREX_EXPORT ZyanStatus ZyrexTransactionAbort();
  *
  * @param   address     The address to hook.
  * @param   callback    The callback address.
- * @param   original    Receives the address of the original function, if the operation succeeded.
+ * @param   trampoline  Receives the address of the trampoline to the original function, if the
+ *                      operation succeeded.
  *
  * @return  A zyan status code.                                                                  
  */
 ZYREX_EXPORT ZyanStatus ZyrexInstallInlineHook(void* address, const void* callback, 
-    ZyanConstVoidPointer* original);
+    ZyanConstVoidPointer* trampoline);
 
 ///**
 // * @brief   Attaches an exception hook.
@@ -158,12 +219,12 @@ ZYREX_EXPORT ZyanStatus ZyrexInstallInlineHook(void* address, const void* callba
 /**
  * @brief   Removes an inline hook at the given `address`.
  *
- * @param   address     The address to unhook.
- * @param   original    Receives the address of the original function, if the operation succeeded.
+ * @param   trampoline  A pointer to the trampoline address received during the hook attaching.
+ *                      Receives the address of the original function after removing the hook.
  *
  * @return  A zyan status code.                                                                  
  */
-ZYREX_EXPORT ZyanStatus ZyrexRemoveInlineHook(void* address, ZyanConstVoidPointer* original);
+ZYREX_EXPORT ZyanStatus ZyrexRemoveInlineHook(ZyanConstVoidPointer* trampoline);
 
 /* ---------------------------------------------------------------------------------------------- */
 

@@ -29,21 +29,23 @@
  * @brief   Demonstrates the inline-hook.
  */
 
+#include <Zycore/Defines.h>
 #include <Zyrex/Zyrex.h>
 #include <Zyrex/Internal/InlineHook.h>
 #include <Zyrex/Internal/Trampoline.h>
 #include <stdio.h>
-#include <Windows.h>
 #include "Zyrex/Transaction.h"
 #include <stdint.h>
+
+#include <Windows.h>
 
 /* ============================================================================================== */
 /* Entry point                                                                                    */
 /* ============================================================================================== */
 
-typedef DWORD (__stdcall *functype)(void* lpThreadParameter);
+typedef DWORD (__stdcall functype)(void* param);
 
-const void* original = NULL;
+static functype* volatile original = NULL;
 
 DWORD __stdcall xxx2(void* param)
 {
@@ -65,56 +67,69 @@ DWORD __stdcall callback(void* param)
 
     puts("hello from callback\n");
 
-    return ((functype)original)(NULL) + 1;
+    return (*original)(NULL) + 1;
+}
+
+typedef BOOL (WINAPI FuncCopyFileW)(_In_ LPCWSTR lpExistingFileName, _In_ LPCWSTR lpNewFileName,
+    _In_ BOOL bFailIfExists);
+
+static FuncCopyFileW* volatile CopyFileWOriginal = ZYAN_NULL;
+
+BOOL WINAPI CopyFileWCallback(_In_ LPCWSTR lpExistingFileName, _In_ LPCWSTR lpNewFileName,
+    _In_ BOOL bFailIfExists)
+{
+    ZYAN_UNUSED(lpExistingFileName);
+    ZYAN_UNUSED(lpNewFileName);
+    ZYAN_UNUSED(bFailIfExists);
+
+    puts("CopyFileW callback");
+
+    const BOOL result = CopyFileWOriginal(lpExistingFileName, lpNewFileName, bFailIfExists);
+    const DWORD error = GetLastError();
+    ZYAN_UNUSED(error);
+
+    return result;
 }
 
 int main()
 {
+
     ZyrexInitialize();
 
     ZyrexTransactionBegin();
-    ZyrexInstallInlineHook((void*)&xxx2, (const void*)&callback, &original);
-    int x = xxx2(0);
-    printf("%x\n", x);
+    ZyrexInstallInlineHook((void*)&xxx2, (const void*)&callback, (ZyanConstVoidPointer*)&original);
+    /*ZyrexInstallInlineHook((void*)&CopyFileW, (const void*)&CopyFileWCallback, 
+        (ZyanConstVoidPointer*)&CopyFileWOriginal);*/
     ZyrexTransactionCommit();
-
+    printf("%x\n", (unsigned int)xxx2(0));
 
     ZyrexTransactionBegin();
-    ZyrexRemoveInlineHook((void*)&xxx2, &original);
-    int z = xxx2(0);
-    printf("%x\n", z);
+    ZyrexRemoveInlineHook((ZyanConstVoidPointer*)&original);
     ZyrexTransactionCommit();
-    
+    printf("%x\n", (unsigned int)xxx2(0));
 
-    //ZyrexTransactionAbort();
 
-//    ZyanU8 buffer[] = 
-//    {                                 // E1, E2
-//         0xEB, 0xFE, 0x75, 0x02, 0xeb, 0xfb, 0x67, 0xE3, 0xf8, 0x48, 0x8B, 0x05, 0xF5, 0xFF, 0xFF, 0xFF, 0x90, 0x90, 0x90, 0xC3
-//    };
-//    void* const buf = VirtualAlloc(NULL, sizeof(buffer), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-//    memcpy(buf, buffer, sizeof(buffer));
-//
-//    const functype xxx = xxx2;// (functype)buf;
-//
-//
-//    ZyrexTrampolineChunk* trampoline;
-//    const ZyanStatus status =
-//        ZyrexTrampolineCreate((const void*)xxx, (const void*)&callback, 5, &trampoline);
-//    if (ZYAN_SUCCESS(status))
-//    {
-//        original = &trampoline->code_buffer;
-//
-//#ifdef ZYAN_X64
-//        ZyrexAttachInlineHook((void*)xxx, &trampoline->callback_jump);
-//#else
-//        ZyrexAttachInlineHook(xxx, &callback);
-//#endif
-//
-//        printf("%.8X", ((functype)xxx)(NULL));
-//
-//        ZyrexTrampolineFree(trampoline);
-//    }
+    //ZyanU8 buffer[] = 
+    //{                                 // E1, E2
+    //     /*0xEB, 0xFE, */0x75, 0x02, 0xeb, 0xfb, 0x67, 0xE3, 0xf8, 0x48, 0x8B, 0x05, 0xF5, 0xFF, 0xFF, 0xFF, 0x90, 0x90, 0x90, 0xC3
+    //};
+    //void* const buf = VirtualAlloc(NULL, sizeof(buffer), MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    //memcpy(buf, buffer, sizeof(buffer));
+
+    //functype* const xxx = (functype*)buf;
+
+
+    //ZyrexTrampolineChunk* trampoline;
+    //const ZyanStatus status =
+    //    ZyrexTrampolineCreate((const void*)xxx, (const void*)&callback, 5, &trampoline);
+    //if (ZYAN_SUCCESS(status))
+    //{
+    //    original = (functype*)&trampoline->code_buffer;
+
+    //    printf("%.8X", ((functype*)original)(NULL));
+
+    //    ZyrexTrampolineFree(trampoline);
+    //}
 
     return 0;
 }

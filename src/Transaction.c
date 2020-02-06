@@ -27,6 +27,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <Windows.h>
+#include <TlHelp32.h>
 #include <Zycore/LibC.h>
 #include <Zycore/Vector.h>
 #include <Zycore/Zycore.h>
@@ -38,25 +39,6 @@
 /* ============================================================================================== */
 /* Enums and types                                                                                */
 /* ============================================================================================== */
-
-/**
- * @brief   Defines the `ZyrexHookType` enum.
- */
-typedef enum ZyrexHookType_
-{
-    /**
-     * @brief   Inline hook.
-     */
-    ZYREX_HOOK_TYPE_INLINE,
-    /**
-     * @brief   Exception hook.
-     */
-    ZYREX_HOOK_TYPE_EXCEPTION,
-    /**
-     * @brief   Context/HWBP hook.
-     */
-    ZYREX_HOOK_TYPE_CONTEXT
-} ZyrexHookType;
 
 /**
  * @brief   Defines the `ZyrexOperationAction` enum.
@@ -98,7 +80,7 @@ typedef struct ZyrexOperation_
      * @brief   This value points to the memory that is passed by the user to store the trampoline
      *          pointer.
      */
-    ZyanConstVoidPointer* trampoline_accessor;
+    //ZyanConstVoidPointer* trampoline_accessor;
 } ZyrexOperation;
 
 /* ============================================================================================== */
@@ -300,7 +282,49 @@ ZyanStatus ZyrexUpdateThread(DWORD thread_id)
 
 ZyanStatus ZyrexUpdateAllThreads()
 {
-    // TODO:
+    if (g_transaction_data.transaction_thread_id != GetCurrentThreadId())
+    {
+        return ZYAN_STATUS_INVALID_OPERATION;
+    }
+    
+    ZYAN_ASSERT(g_transaction_data.pending_operations.data);
+    ZYAN_ASSERT(g_transaction_data.threads_to_update.data);
+
+    const HANDLE h_snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+    if (h_snapshot == INVALID_HANDLE_VALUE)
+    {
+        return ZYAN_STATUS_BAD_SYSTEMCALL;
+    }
+
+    THREADENTRY32 thread;
+    ZYAN_MEMSET(&thread, 0, sizeof(thread));
+    thread.dwSize = sizeof(thread);
+
+    if (Thread32First(h_snapshot, &thread))
+    {
+        do
+        {
+            const HANDLE h_thread = 
+                OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, 
+                    ZYAN_FALSE, thread.th32ThreadID);
+            if (h_thread != ZYAN_NULL)
+            {
+                if (SuspendThread(h_thread) == (DWORD)(-1))
+                {
+                    CloseHandle(h_thread);
+                }
+                else
+                {
+                    ZyanVectorPushBack(&g_transaction_data.threads_to_update, &h_thread);     
+                } 
+            }                     
+        } while (!Thread32Next(h_snapshot, &thread));
+    }
+
+    if (!CloseHandle(h_snapshot))
+    {
+        return ZYAN_STATUS_BAD_SYSTEMCALL;
+    };
 
     return ZYAN_STATUS_SUCCESS;
 }
@@ -336,11 +360,20 @@ ZyanStatus ZyrexTransactionCommitEx(const void** failed_operation)
             {
             case ZYREX_OPERATION_ACTION_ATTACH:
             {
+                // TODO: Check if code has changed between this call and the Attach*
                 status = ZyrexWriteHookJump(item->address, item->trampoline);
                 break;
             }
             case ZYREX_OPERATION_ACTION_REMOVE:
                 status = ZyrexRestoreInstructions(item->address, item->trampoline);
+                if (ZYAN_SUCCESS(status))
+                {
+                    status = ZyrexTrampolineFree(item->trampoline);
+                    if (status == ZYAN_STATUS_FALSE)
+                    {
+                        status = ZYAN_STATUS_NOT_FOUND;
+                    }
+                }
                 break;
             default:
                 ZYAN_UNREACHABLE;
@@ -407,8 +440,13 @@ ZyanStatus ZyrexTransactionAbort()
 /* ---------------------------------------------------------------------------------------------- */
 
 ZyanStatus ZyrexInstallInlineHook(void* address, const void* callback, 
-    ZyanConstVoidPointer* original)
+    ZyanConstVoidPointer* trampoline)
 {
+    if (!address || !callback || !trampoline)
+    {
+        return ZYAN_STATUS_INVALID_ARGUMENT;
+    }
+
     if (g_transaction_data.transaction_thread_id != GetCurrentThreadId())
     {
         return ZYAN_STATUS_INVALID_OPERATION;
@@ -422,15 +460,13 @@ ZyanStatus ZyrexInstallInlineHook(void* address, const void* callback,
         /* type                */ ZYREX_HOOK_TYPE_INLINE,
         /* action              */ ZYREX_OPERATION_ACTION_ATTACH,
         /* address             */ ZYAN_NULL,
-        /* trampoline          */ ZYAN_NULL,
-        /* trampoline_accessor */ ZYAN_NULL
+        /* trampoline          */ ZYAN_NULL
     };
     operation.address = address;
-    operation.trampoline_accessor = original;
     ZYAN_CHECK(ZyrexTrampolineCreate(address, callback, ZYREX_SIZEOF_RELATIVE_JUMP, 
         &operation.trampoline));
 
-    *original = &operation.trampoline->code_buffer;
+    *trampoline = &operation.trampoline->code_buffer;
 
     return ZyanVectorPushBack(&g_transaction_data.pending_operations, &operation);
 }
@@ -439,7 +475,7 @@ ZyanStatus ZyrexInstallInlineHook(void* address, const void* callback,
 /* Hook installation                                                                              */
 /* ---------------------------------------------------------------------------------------------- */
 
-ZyanStatus ZyrexRemoveInlineHook(void* address, ZyanConstVoidPointer* original)
+ZyanStatus ZyrexRemoveInlineHook(ZyanConstVoidPointer* original)
 {
     if (g_transaction_data.transaction_thread_id != GetCurrentThreadId())
     {
@@ -449,24 +485,22 @@ ZyanStatus ZyrexRemoveInlineHook(void* address, ZyanConstVoidPointer* original)
     ZYAN_ASSERT(g_transaction_data.pending_operations.data);
     ZYAN_ASSERT(g_transaction_data.threads_to_update.data);
 
+    ZyrexTrampolineChunk* trampoline;
+    ZYAN_CHECK(ZyrexTrampolineFind(*original, &trampoline));
+
     ZyrexOperation operation = 
     {
         /* type                */ ZYREX_HOOK_TYPE_INLINE,
         /* action              */ ZYREX_OPERATION_ACTION_REMOVE,
         /* address             */ ZYAN_NULL,
-        /* trampoline          */ ZYAN_NULL,
-        /* trampoline_accessor */ ZYAN_NULL
+        /* trampoline          */ ZYAN_NULL
     };
     operation.address = address;
-    operation.trampoline_accessor = original;
+    operation.trampoline = trampoline;
 
-    // TODO:
-    /*ZYAN_CHECK(ZyrexTrampolineCreate(address, callback, ZYREX_SIZEOF_RELATIVE_JUMP, 
-        &operation.trampoline));*/
+    *original = address;
 
-    *original = &operation.trampoline->code_buffer;
-
-    return ZYAN_STATUS_SUCCESS;//ZyanVectorPushBack(&g_transaction_data.pending_operations, &operation);        
+    return ZyanVectorPushBack(&g_transaction_data.pending_operations, &operation);        
 }
 
 /* ---------------------------------------------------------------------------------------------- */

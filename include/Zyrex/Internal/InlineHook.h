@@ -27,6 +27,10 @@
 #ifndef ZYREX_INLINE_HOOK_H
 #define ZYREX_INLINE_HOOK_H
 
+#include <Zycore/Defines.h>
+#ifdef ZYAN_WINDOWS
+#   include <windows.h>
+#endif
 #include <Zycore/Types.h>
 #include <Zyrex/Internal/Trampoline.h>
 
@@ -42,12 +46,13 @@ extern "C" {
 /* Attaching and detaching                                                                        */
 /* ---------------------------------------------------------------------------------------------- */
 
-
-#include <Windows.h>
+#ifdef ZYAN_WINDOWS
 
 ZyanStatus ZyrexMigrateThread(DWORD thread_id, const void* source, ZyanUSize source_length, 
     const void* destination, ZyanUSize destination_length, 
     const ZyrexInstructionTranslationMap* translation_map);
+
+#endif
 
 /* ---------------------------------------------------------------------------------------------- */
 

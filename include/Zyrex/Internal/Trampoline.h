@@ -81,7 +81,7 @@ extern "C" {
 /**
  * @brief   Defines the trampoline region signature.
  */
-#define ZYREX_TRAMPOLINE_REGION_SIGNATURE   'zrex'
+#define ZYREX_TRAMPOLINE_REGION_SIGNATURE   0x7A726578
 
 /* ============================================================================================== */
 /* Enums and types                                                                                */
@@ -127,6 +127,10 @@ typedef struct ZyrexInstructionTranslationItem_
      *          buffer.
      */
     ZyanU8 offset_destination;
+    /**
+     * @brief   An absolute target address outside the destination buffer.
+     */
+    ZyanUPointer target_address;
 } ZyrexInstructionTranslationItem;
 
 /**
@@ -206,6 +210,10 @@ typedef struct ZyrexTrampolineChunk_
 /* Functions                                                                                      */
 /* ============================================================================================== */
 
+/* ---------------------------------------------------------------------------------------------- */
+/* Creation and destruction                                                                       */
+/* ---------------------------------------------------------------------------------------------- */
+
 /**
  * @brief   Creates a new trampoline.
  *
@@ -231,6 +239,23 @@ ZyanStatus ZyrexTrampolineCreate(const void* address, const void* callback,
  * @return  A zyan status code.
  */
 ZyanStatus ZyrexTrampolineFree(ZyrexTrampolineChunk* trampoline);
+
+/* ---------------------------------------------------------------------------------------------- */
+/* Searching                                                                                      */
+/* ---------------------------------------------------------------------------------------------- */
+
+/**
+ * @brief   Searches for a trampoline chunk using the given `original`-function pointer.
+ *
+ * @param   original    A pointer to the original function.
+ * @param   trampoline  Receives the corresponding trampoline chunk, if found.
+ *
+ * @return  `ZYAN_STATUS_TRUE` if the element was found, `ZYAN_STATUS_FALSE` if not or an other
+ *          zyan status code if an error occured.
+ */
+ZyanStatus ZyrexTrampolineFind(const void* original, ZyrexTrampolineChunk** trampoline);
+
+/* ---------------------------------------------------------------------------------------------- */
 
 /* ============================================================================================== */
 

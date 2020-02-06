@@ -383,15 +383,15 @@ static ZyanBool ZyrexShouldRewriteBranchInstruction(ZyrexRelocationContext* cont
  * chunk. This prevents wrong data being read due to modifications of the instructions during the
  * relocation process.
  */
-static ZyanStatus ZyrexShouldRedirectMemoryInstruction(ZyrexRelocationContext* context,
-    const ZyrexAnalyzedInstruction* instruction)
-{
-    ZYAN_ASSERT(context);
-    ZYAN_ASSERT(instruction);
-    ZYAN_ASSERT(instruction->has_relative_target);
-
-    return !instruction->has_external_target;
-}
+//static ZyanStatus ZyrexShouldRedirectMemoryInstruction(ZyrexRelocationContext* context,
+//    const ZyrexAnalyzedInstruction* instruction)
+//{
+//    ZYAN_ASSERT(context);
+//    ZYAN_ASSERT(instruction);
+//    ZYAN_ASSERT(instruction->has_relative_target);
+//
+//    return !instruction->has_external_target;
+//}
 
 /* ---------------------------------------------------------------------------------------------- */
 /* Relocation                                                                                     */
@@ -524,7 +524,7 @@ static ZyanStatus ZyrexRelocateRelativeBranchInstruction(ZyrexRelocationContext*
                 (ZyanU8)context->bytes_written + instruction->instruction.length);
 
             // Generate `JMP` to `1` branch
-            ZyrexWriteRelativeJump(address, instruction->absolute_target_address);
+            ZyrexWriteRelativeJump(address, (ZyanUPointer)instruction->absolute_target_address);
             ZyrexUpdateRelocationContext(context, 2, (ZyanU8)context->bytes_read, 
                 (ZyanU8)context->bytes_written + instruction->instruction.length + 2);
 
@@ -579,7 +579,7 @@ static ZyanStatus ZyrexRelocateRelativeBranchInstruction(ZyrexRelocationContext*
         // Write relative offset
         *(ZyanI32*)(address) = 
             ZyrexCalculateRelativeOffset(length, (ZyanUPointer)address, 
-                instruction->absolute_target_address);
+                (ZyanUPointer)instruction->absolute_target_address);
 
         // Update relocation context
         ZyrexUpdateRelocationContext(context, length, (ZyanU8)context->bytes_read, 
@@ -620,7 +620,7 @@ static ZyanStatus ZyrexRelocateRelativeMemoryInstruction(ZyrexRelocationContext*
         // Update the relative offset for the new instruction position
         const ZyanI32 value = ZyrexCalculateRelativeOffset(instruction->instruction.length, 
             (ZyanUPointer)context->destination + context->bytes_written, 
-            instruction->absolute_target_address);
+            (ZyanUPointer)instruction->absolute_target_address);
 
         switch (instruction->instruction.raw.disp.size)
         {
