@@ -488,6 +488,9 @@ ZyanStatus ZyrexRemoveInlineHook(ZyanConstVoidPointer* original)
     ZyrexTrampolineChunk* trampoline;
     ZYAN_CHECK(ZyrexTrampolineFind(*original, &trampoline));
 
+    ZyanVoidPointer const target =
+        (ZyanVoidPointer)(trampoline->backjump_address - trampoline->original_code_size);
+
     ZyrexOperation operation = 
     {
         /* type                */ ZYREX_HOOK_TYPE_INLINE,
@@ -495,10 +498,10 @@ ZyanStatus ZyrexRemoveInlineHook(ZyanConstVoidPointer* original)
         /* address             */ ZYAN_NULL,
         /* trampoline          */ ZYAN_NULL
     };
-    operation.address = address;
+    operation.address = target;
     operation.trampoline = trampoline;
 
-    *original = address;
+    *original = target;
 
     return ZyanVectorPushBack(&g_transaction_data.pending_operations, &operation);        
 }
