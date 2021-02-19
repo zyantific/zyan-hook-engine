@@ -38,33 +38,32 @@
 
 #ifdef ZYAN_WINDOWS
 
-ZyanStatus ZyrexMigrateThread(DWORD thread_id, const void* source, ZyanUSize source_length, 
-    const void* destination, ZyanUSize destination_length, 
+ZyanStatus ZyrexMigrateThread(HANDLE thread_handle, const void* source, ZyanUSize source_length,
+    const void* destination, ZyanUSize destination_length,
     const ZyrexInstructionTranslationMap* translation_map)
 {
     ZYAN_UNUSED(destination_length);
 
+    ZYAN_ASSERT(thread_handle);
+    ZYAN_ASSERT(source);
+    ZYAN_ASSERT(source_length);
+    ZYAN_ASSERT(destination);
+    ZYAN_ASSERT(destination_length);
+    ZYAN_ASSERT(translation_map);
+
     ZyanStatus status = ZYAN_STATUS_SUCCESS;
 
-    HANDLE const handle = 
-        OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, 
-            (BOOL)ZYAN_FALSE, thread_id);
-    if (!handle)
-    {
-        return ZYAN_STATUS_BAD_SYSTEMCALL;    
-    }
-
-    const DWORD suspend_count = SuspendThread(handle);
+    const DWORD suspend_count = SuspendThread(thread_handle);
     if (suspend_count == (DWORD)(-1))
     {
-        CloseHandle(handle);
+        CloseHandle(thread_handle);
         return ZYAN_STATUS_BAD_SYSTEMCALL;
     }
 
     CONTEXT context = { 0 };
     //ZYAN_MEMSET(&context, 0, sizeof(context));
     context.ContextFlags = CONTEXT_CONTROL;
-    if (!GetThreadContext(handle, &context))
+    if (!GetThreadContext(thread_handle, &context))
     {
         status = ZYAN_STATUS_BAD_SYSTEMCALL;
         goto CleanupAndResume;
@@ -79,7 +78,7 @@ ZyanStatus ZyrexMigrateThread(DWORD thread_id, const void* source, ZyanUSize sou
 #endif
     if ((current_ip < (ZyanUPointer)source) || (current_ip > (ZyanUPointer)source + source_length))
     {
-        goto CleanupAndResume;       
+        goto CleanupAndResume;
     }
 
     const ZyanUPointer source_offset = (ZyanUPointer)source - current_ip;
@@ -95,7 +94,7 @@ ZyanStatus ZyrexMigrateThread(DWORD thread_id, const void* source, ZyanUSize sou
 #   error "Unsupported architecture detected"
 #endif
 
-            if (!SetThreadContext(handle, &context))
+            if (!SetThreadContext(thread_handle, &context))
             {
                 status = ZYAN_STATUS_BAD_SYSTEMCALL;
             }
@@ -110,21 +109,16 @@ ZyanStatus ZyrexMigrateThread(DWORD thread_id, const void* source, ZyanUSize sou
 CleanupAndResume:
     while (ZYAN_TRUE)
     {
-        const DWORD value = ResumeThread(handle);
+        const DWORD value = ResumeThread(thread_handle);
         if (value == (DWORD)(-1))
         {
-            CloseHandle(handle);
+            CloseHandle(thread_handle);
             return ZYAN_STATUS_BAD_SYSTEMCALL;
         }
         if (value <= suspend_count + 1)
         {
             break;
         }
-    }
-
-    if (!CloseHandle(handle))
-    {
-        return ZYAN_STATUS_BAD_SYSTEMCALL;
     }
 
     return status;
@@ -135,7 +129,6 @@ CleanupAndResume:
 /* ---------------------------------------------------------------------------------------------- */
 /* Attaching and detaching                                                                        */
 /* ---------------------------------------------------------------------------------------------- */
-
 
 /* ---------------------------------------------------------------------------------------------- */
 

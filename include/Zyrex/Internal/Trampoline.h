@@ -80,6 +80,8 @@ extern "C" {
 
 /**
  * @brief   Defines the trampoline region signature.
+ *
+ * Represents the character-sequence 'zrex' if interpreted as ASCII string.
  */
 #define ZYREX_TRAMPOLINE_REGION_SIGNATURE   0x7A726578
 

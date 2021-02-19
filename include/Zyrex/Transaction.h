@@ -72,7 +72,7 @@ typedef enum ZyrexHookType_
      * later catched by an unhandled-exception-handler that redirects code-flow to the callback
      * function by modifying the instruction-pointer register of the calling thread.
      *
-     * This hook 
+     * This hook
      */
     ZYREX_HOOK_TYPE_CONTEXT
 } ZyrexHookType;
@@ -97,14 +97,11 @@ typedef struct ZyrexHook_
      * @brief   The address of the hooked function.
      */
     void* address;
-
 } ZyrexHook;
 
 /* ---------------------------------------------------------------------------------------------- */
 /* Hook operation                                                                                 */
 /* ---------------------------------------------------------------------------------------------- */
-
-
 
 /* ---------------------------------------------------------------------------------------------- */
 
@@ -121,7 +118,7 @@ typedef struct ZyrexHook_
  *
  * @return  A zyan status code.
  */
-ZYREX_EXPORT ZyanStatus ZyrexTransactionBegin();
+ZYREX_EXPORT ZyanStatus ZyrexTransactionBegin(void);
 
 /**
  * @brief   Adds a specific thread to the thread-update list.
@@ -133,7 +130,7 @@ ZYREX_EXPORT ZyanStatus ZyrexTransactionBegin();
  *
  * @return  A zyan status code.
  */
-ZYREX_EXPORT ZyanStatus ZyrexUpdateThread(DWORD thread_id);
+ZYREX_EXPORT ZyanStatus ZyrexUpdateThread(ZyanThreadId thread_id);
 
 /**
  * @brief   Adds all threads (except the calling one) to the update list.
@@ -143,7 +140,7 @@ ZYREX_EXPORT ZyanStatus ZyrexUpdateThread(DWORD thread_id);
  *
  * @return  A zyan status code.
  */
-ZYREX_EXPORT ZyanStatus ZyrexUpdateAllThreads();
+ZYREX_EXPORT ZyanStatus ZyrexUpdateAllThreads(void);
 
 /**
  * @brief   Commits the current transaction.
@@ -153,7 +150,7 @@ ZYREX_EXPORT ZyanStatus ZyrexUpdateAllThreads();
  *
  * @return  A zyan status code.
  */
-ZYREX_EXPORT ZyanStatus ZyrexTransactionCommit();
+ZYREX_EXPORT ZyanStatus ZyrexTransactionCommit(void);
 
 /**
  * @brief   Commits the current transaction.
@@ -169,7 +166,7 @@ ZYREX_EXPORT ZyanStatus ZyrexTransactionCommitEx(const void** failed_operation);
  *
  * @return  A zyan status code.
  */
-ZYREX_EXPORT ZyanStatus ZyrexTransactionAbort();
+ZYREX_EXPORT ZyanStatus ZyrexTransactionAbort(void);
 
 /* ---------------------------------------------------------------------------------------------- */
 /* Hook installation                                                                              */
@@ -183,9 +180,9 @@ ZYREX_EXPORT ZyanStatus ZyrexTransactionAbort();
  * @param   trampoline  Receives the address of the trampoline to the original function, if the
  *                      operation succeeded.
  *
- * @return  A zyan status code.                                                                  
+ * @return  A zyan status code.
  */
-ZYREX_EXPORT ZyanStatus ZyrexInstallInlineHook(void* address, const void* callback, 
+ZYREX_EXPORT ZyanStatus ZyrexInstallInlineHook(void* address, const void* callback,
     ZyanConstVoidPointer* trampoline);
 
 ///**
@@ -219,12 +216,12 @@ ZYREX_EXPORT ZyanStatus ZyrexInstallInlineHook(void* address, const void* callba
 /**
  * @brief   Removes an inline hook at the given `address`.
  *
- * @param   trampoline  A pointer to the trampoline address received during the hook attaching.
+ * @param   original    A pointer to the trampoline address received during the hook attaching.
  *                      Receives the address of the original function after removing the hook.
  *
- * @return  A zyan status code.                                                                  
+ * @return  A zyan status code.
  */
-ZYREX_EXPORT ZyanStatus ZyrexRemoveInlineHook(ZyanConstVoidPointer* trampoline);
+ZYREX_EXPORT ZyanStatus ZyrexRemoveInlineHook(ZyanConstVoidPointer* original);
 
 /* ---------------------------------------------------------------------------------------------- */
 

@@ -48,7 +48,7 @@ extern "C" {
 
 #ifdef ZYAN_WINDOWS
 
-ZyanStatus ZyrexMigrateThread(DWORD thread_id, const void* source, ZyanUSize source_length, 
+ZyanStatus ZyrexMigrateThread(HANDLE thread_handle, const void* source, ZyanUSize source_length, 
     const void* destination, ZyanUSize destination_length, 
     const ZyrexInstructionTranslationMap* translation_map);
 
