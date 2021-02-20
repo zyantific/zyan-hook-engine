@@ -40,7 +40,8 @@
 
 ZyanStatus ZyrexMigrateThread(HANDLE thread_handle, const void* source, ZyanUSize source_length,
     const void* destination, ZyanUSize destination_length,
-    const ZyrexInstructionTranslationMap* translation_map)
+    const ZyrexInstructionTranslationMap* translation_map,
+    ZyrexThreadMigrationDirection direction)
 {
     ZYAN_UNUSED(destination_length);
 
@@ -84,22 +85,48 @@ ZyanStatus ZyrexMigrateThread(HANDLE thread_handle, const void* source, ZyanUSiz
     const ZyanUPointer source_offset = (ZyanUPointer)source - current_ip;
     for (ZyanUSize i = 0; i < translation_map->count; ++i)
     {
-        if (translation_map->items[i].offset_source == (ZyanU8)source_offset)
+        switch (direction)
         {
+        case ZYREX_THREAD_MIGRATION_DIRECTION_SRC_DST:
+            if (translation_map->items[i].offset_source == (ZyanU8)source_offset)
+            {
 #if defined(ZYAN_X64)
-    context.Rip = (ZyanUPointer)destination + translation_map->items[i].offset_destination;
+                context.Rip = (ZyanUPointer)destination + translation_map->items[i].offset_destination;
 #elif defined(ZYAN_X86)
-    context.Eip = (ZyanUPointer)destination + translation_map->items[i].offset_destination;
+                context.Eip = (ZyanUPointer)destination + translation_map->items[i].offset_destination;
 #else
 #   error "Unsupported architecture detected"
 #endif
 
-            if (!SetThreadContext(thread_handle, &context))
-            {
-                status = ZYAN_STATUS_BAD_SYSTEMCALL;
-            }
+                if (!SetThreadContext(thread_handle, &context))
+                {
+                    status = ZYAN_STATUS_BAD_SYSTEMCALL;
+                }
 
-            goto CleanupAndResume;
+                goto CleanupAndResume;
+            }
+            break;
+        case ZYREX_THREAD_MIGRATION_DIRECTION_DST_SRC:
+            if (translation_map->items[i].offset_destination == (ZyanU8)source_offset)
+            {
+#if defined(ZYAN_X64)
+                context.Rip = (ZyanUPointer)destination + translation_map->items[i].offset_source;
+#elif defined(ZYAN_X86)
+                context.Eip = (ZyanUPointer)destination + translation_map->items[i].offset_source;
+#else
+#   error "Unsupported architecture detected"
+#endif
+
+                if (!SetThreadContext(thread_handle, &context))
+                {
+                    status = ZYAN_STATUS_BAD_SYSTEMCALL;
+                }
+
+                goto CleanupAndResume;
+            }
+            break;
+        default:
+            ZYAN_UNREACHABLE;
         }
     }
 

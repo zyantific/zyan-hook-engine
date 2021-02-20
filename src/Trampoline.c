@@ -717,9 +717,13 @@ static ZyanStatus ZyrexTrampolineChunkInit(ZyrexTrampolineChunk* chunk, const vo
     ZYAN_CHECK(ZyrexRelocateCode(address, max_bytes_to_read, chunk, min_bytes_to_reloc, 
         &bytes_read, &bytes_written));
 
+    ZYAN_ASSERT(bytes_read <= ZYAN_ARRAY_LENGTH(chunk->original_code));
+    ZYAN_ASSERT(bytes_written <= ZYAN_ARRAY_LENGTH(chunk->code_buffer));
+
     // Write backjump
     ZyrexWriteAbsoluteJump(&chunk->code_buffer[bytes_written],
         (ZyanUPointer)&chunk->backjump_address);
+    chunk->code_buffer_size = (ZyanU8)bytes_written;
     chunk->backjump_address = (ZyanUPointer)address + bytes_read;
 
     // Fill remaining space with `INT 3` instructions
@@ -733,8 +737,7 @@ static ZyanStatus ZyrexTrampolineChunkInit(ZyrexTrampolineChunk* chunk, const vo
     ZYAN_CHECK(ZyanProcessFlushInstructionCache(&chunk->code_buffer, 
         ZYREX_TRAMPOLINE_MAX_CODE_SIZE_WITH_BACKJUMP + ZYREX_TRAMPOLINE_MAX_CODE_SIZE_BONUS));
 
-    // Backup original instructions
-    ZYAN_ASSERT(bytes_read <= ZYAN_ARRAY_LENGTH(chunk->original_code));
+    // Backup original instructions 
     chunk->original_code_size = (ZyanU8)bytes_read;
     ZYAN_MEMCPY(chunk->original_code, address, bytes_read);
 

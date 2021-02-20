@@ -180,7 +180,7 @@ static ZyanStatus ZyrexWriteHookJump(void* address, const ZyrexTrampolineChunk* 
 #endif
 
     // TODO: Restore actual protection
-    ZYAN_CHECK(ZyanMemoryVirtualProtect(address, ZYREX_SIZEOF_RELATIVE_JUMP, 
+    ZYAN_CHECK(ZyanMemoryVirtualProtect(address, ZYREX_SIZEOF_RELATIVE_JUMP,
         ZYAN_PAGE_EXECUTE_READ));
 
     return ZyanProcessFlushInstructionCache(address, ZYREX_SIZEOF_RELATIVE_JUMP);
@@ -203,7 +203,7 @@ static ZyanStatus ZyrexRestoreInstructions(void* address, const ZyrexTrampolineC
     ZYAN_MEMCPY(address, &trampoline->original_code, trampoline->original_code_size);
 
     // TODO: Restore actual protection
-    ZYAN_CHECK(ZyanMemoryVirtualProtect(address, ZYREX_SIZEOF_RELATIVE_JUMP, 
+    ZYAN_CHECK(ZyanMemoryVirtualProtect(address, ZYREX_SIZEOF_RELATIVE_JUMP,
         ZYAN_PAGE_EXECUTE_READ));
 
     return ZyanProcessFlushInstructionCache(address, ZYREX_SIZEOF_RELATIVE_JUMP);
@@ -400,11 +400,48 @@ ZyanStatus ZyrexTransactionCommitEx(const void** failed_operation)
             {
             case ZYREX_OPERATION_ACTION_ATTACH:
             {
+#ifdef ZYAN_WINDOWS
+
+                for (ZyanISize j = 0; j < (ZyanISize)g_transaction_data.threads_to_update.size;
+                    ++j)
+                {
+                    const HANDLE* const thread_handle =
+                        (const HANDLE*)ZyanVectorGet(&g_transaction_data.threads_to_update, j);
+                    ZYAN_ASSERT(thread_handle);
+
+                    // TODO: Handle status code
+                    ZyrexMigrateThread(*thread_handle, item->address,
+                        item->trampoline->original_code_size, &item->trampoline->code_buffer,
+                        item->trampoline->code_buffer_size, &item->trampoline->translation_map,
+                        ZYREX_THREAD_MIGRATION_DIRECTION_SRC_DST);
+                }
+
+#endif
+
                 // TODO: Check if code has changed between this call and the Attach*
                 status = ZyrexWriteHookJump(item->address, item->trampoline);
                 break;
             }
             case ZYREX_OPERATION_ACTION_REMOVE:
+            {
+#ifdef ZYAN_WINDOWS
+
+                for (ZyanISize j = 0; j < (ZyanISize)g_transaction_data.threads_to_update.size;
+                    ++j)
+                {
+                    const HANDLE* const thread_handle =
+                        (const HANDLE*)ZyanVectorGet(&g_transaction_data.threads_to_update, j);
+                    ZYAN_ASSERT(thread_handle);
+
+                    // TODO: Handle status code
+                    ZyrexMigrateThread(*thread_handle, &item->trampoline->code_buffer,
+                        item->trampoline->code_buffer_size, item->address,
+                        item->trampoline->original_code_size, &item->trampoline->translation_map,
+                        ZYREX_THREAD_MIGRATION_DIRECTION_DST_SRC);
+                }
+
+#endif
+
                 status = ZyrexRestoreInstructions(item->address, item->trampoline);
                 if (ZYAN_SUCCESS(status))
                 {
@@ -415,6 +452,7 @@ ZyanStatus ZyrexTransactionCommitEx(const void** failed_operation)
                     }
                 }
                 break;
+            }
             default:
                 ZYAN_UNREACHABLE;
             }
@@ -440,30 +478,6 @@ ZyanStatus ZyrexTransactionCommitEx(const void** failed_operation)
     }
 
 #ifdef ZYAN_WINDOWS
-
-    // TODO: Handle thread migration on detach
-
-    for (ZyanISize i = 0; i < (ZyanISize)g_transaction_data.pending_operations.size; ++i)
-    {
-        const ZyrexOperation* const item = ZyanVectorGet(&g_transaction_data.pending_operations, i);
-        ZYAN_ASSERT(item);
-
-        if ((item->type != ZYREX_HOOK_TYPE_INLINE) ||
-            (item->action != ZYREX_OPERATION_ACTION_ATTACH))
-        {
-            continue;
-        }
-
-        for (ZyanISize j = 0; j < (ZyanISize)g_transaction_data.threads_to_update.size; ++j)
-        {
-            const HANDLE* const thread_handle = (HANDLE*)ZyanVectorGet(&g_transaction_data.threads_to_update, j);
-
-            // TODO: Handle status code
-            ZyrexMigrateThread(*thread_handle, item->address, item->trampoline->original_code_size,
-                &item->trampoline->code_buffer, item->trampoline->code_buffer_size,
-                &item->trampoline->translation_map);
-        }
-    }
 
     ZyanVectorDestroy(&g_transaction_data.threads_to_update);
 

@@ -39,6 +39,24 @@ extern "C" {
 #endif
 
 /* ============================================================================================== */
+/* Enums and types                                                                                */
+/* ============================================================================================== */
+
+typedef enum ZyrexThreadMigrationDirection_
+{
+    /**
+     * @brief   Uses the 'source' offsets in the translation map to map them to the 'destination'
+     *          offsets.
+     */
+    ZYREX_THREAD_MIGRATION_DIRECTION_SRC_DST,
+    /**
+     * @brief   Uses the 'destination' offsets in the translation map to map them to the 'source'
+     *          offsets.
+     */
+    ZYREX_THREAD_MIGRATION_DIRECTION_DST_SRC,
+} ZyrexThreadMigrationDirection;
+
+/* ============================================================================================== */
 /* Functions                                                                                      */
 /* ============================================================================================== */
 
@@ -48,9 +66,10 @@ extern "C" {
 
 #ifdef ZYAN_WINDOWS
 
-ZyanStatus ZyrexMigrateThread(HANDLE thread_handle, const void* source, ZyanUSize source_length, 
-    const void* destination, ZyanUSize destination_length, 
-    const ZyrexInstructionTranslationMap* translation_map);
+ZyanStatus ZyrexMigrateThread(HANDLE thread_handle, const void* source, ZyanUSize source_length,
+    const void* destination, ZyanUSize destination_length,
+    const ZyrexInstructionTranslationMap* translation_map, 
+    ZyrexThreadMigrationDirection direction);
 
 #endif
 
