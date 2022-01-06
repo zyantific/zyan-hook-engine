@@ -197,9 +197,9 @@ static ZyanStatus ZyrexAnalyzeCode(const void* buffer, ZyanUSize length,
 
     ZydisDecoder decoder;
 #if defined(ZYAN_X86)
-    ZydisDecoderInit(&decoder, ZYDIS_MACHINE_MODE_LONG_COMPAT_32, ZYDIS_ADDRESS_WIDTH_32);
+    ZydisDecoderInit(&decoder, ZYDIS_MACHINE_MODE_LONG_COMPAT_32, ZYDIS_STACK_WIDTH_32);
 #elif defined(ZYAN_X64)
-    ZydisDecoderInit(&decoder, ZYDIS_MACHINE_MODE_LONG_64, ZYDIS_ADDRESS_WIDTH_64);
+    ZydisDecoderInit(&decoder, ZYDIS_MACHINE_MODE_LONG_64, ZYDIS_STACK_WIDTH_64);
 #else
 #   error "Unsupported architecture detected"
 #endif
@@ -218,8 +218,8 @@ static ZyanStatus ZyrexAnalyzeCode(const void* buffer, ZyanUSize length,
     {
         ZyrexAnalyzedInstruction item;
 
-        ZYAN_CHECK(ZydisDecoderDecodeBuffer(&decoder, (const ZyanU8*)buffer + offset,
-            length - offset, &item.instruction));
+        ZYAN_CHECK(ZydisDecoderDecodeInstruction(&decoder, ZYAN_NULL, 
+            (const ZyanU8*)buffer + offset, length - offset, &item.instruction));
 
         item.address_offset = offset;
         item.address = (ZyanUPointer)(const ZyanU8*)buffer + offset;

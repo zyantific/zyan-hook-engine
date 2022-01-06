@@ -1,0 +1,14 @@
+set(zyrex_VERSION @PROJECT_VERSION@)
+
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(Zycore)
+find_dependency(Zydis)
+
+include("${CMAKE_CURRENT_LIST_DIR}/zyrex-targets.cmake")
+
+set_and_check(zyrex_INCLUDE_DIR "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_INCLUDEDIR@")
+set_and_check(zyrex_LIB_DIR "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_LIBDIR@")
+
+check_required_components(zyrex)

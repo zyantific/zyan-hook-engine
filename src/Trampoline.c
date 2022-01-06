@@ -207,9 +207,9 @@ static ZyanStatus ZyrexGetAddressRangeOfRelativeInstructions(const void* buffer,
 
     ZydisDecoder decoder;
 #if defined(ZYAN_X86)
-    ZydisDecoderInit(&decoder, ZYDIS_MACHINE_MODE_LONG_COMPAT_32, ZYDIS_ADDRESS_WIDTH_32);
+    ZydisDecoderInit(&decoder, ZYDIS_MACHINE_MODE_LONG_COMPAT_32, ZYDIS_STACK_WIDTH_32);
 #elif defined(ZYAN_X64)
-    ZydisDecoderInit(&decoder, ZYDIS_MACHINE_MODE_LONG_64, ZYDIS_ADDRESS_WIDTH_64);
+    ZydisDecoderInit(&decoder, ZYDIS_MACHINE_MODE_LONG_64, ZYDIS_STACK_WIDTH_64);
 #else
 #   error "Unsupported architecture detected"
 #endif
@@ -220,9 +220,8 @@ static ZyanStatus ZyrexGetAddressRangeOfRelativeInstructions(const void* buffer,
     ZyanUSize offset = 0;
     while (offset < min_bytes_to_decode)
     {
-        const ZyanStatus status =
-            ZydisDecoderDecodeBuffer(&decoder, (ZyanU8*)buffer + offset, size - offset,
-                &instruction);
+        const ZyanStatus status = ZydisDecoderDecodeInstruction(&decoder, ZYAN_NULL, 
+            (ZyanU8*)buffer + offset, size - offset, &instruction);
 
         ZYAN_CHECK(status);
 
