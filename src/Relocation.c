@@ -344,17 +344,14 @@ static ZyanBool ZyrexIsRelativeMemoryInstruction(const ZydisDecodedInstruction* 
 
 /**
  * @brief   Checks if the given relative branch instruction needs to be rewritten in order to
- *          support a 32-bit offset.
+ *          reach the destination address.
  *
  * @param   context     A pointer to the `ZyrexRelocationContext` struct.
  * @param   instruction A pointer to the `ZyrexAnalyzedInstruction` struct of the instruction to
  *                      check.
  *
- * @return  `ZYAN_TRUE` if the given branch instruction needs to be rewritten in order to support
- *          a 32-bit offset or `ZYAN_FALSE`, if not.
- *
- * The instruction needs to be rewritten, if it has an external target and the offset size is
- * insufficient to reach the target address.
+ * @return  `ZYAN_TRUE` if the given relative branch instruction needs to be rewritten in order to
+ *          reach the destination address or `ZYAN_FALSE`, if not.
  */
 static ZyanBool ZyrexShouldRewriteBranchInstruction(ZyrexRelocationContext* context,
     const ZyrexAnalyzedInstruction* instruction)
@@ -362,10 +359,47 @@ static ZyanBool ZyrexShouldRewriteBranchInstruction(ZyrexRelocationContext* cont
     ZYAN_ASSERT(context);
     ZYAN_ASSERT(instruction);
     ZYAN_ASSERT(instruction->has_relative_target);
+    ZYAN_ASSERT(instruction->has_external_target);
 
-    return (instruction->has_external_target && (instruction->instruction.raw.imm[0].size != 32))
-        ? ZYAN_TRUE
-        : ZYAN_FALSE;
+    const ZyanU64 source_address = (ZyanU64)context->destination + context->bytes_written;
+
+    switch (instruction->instruction.raw.imm[0].size)
+    {
+    case 8:
+    {
+        const ZyanI64 distance = (ZyanI64)(instruction->absolute_target_address - source_address - 
+            instruction->instruction.length);
+        if ((distance < ZYAN_INT8_MIN) || (distance > ZYAN_INT8_MAX))
+        {
+            return ZYAN_TRUE;
+        }
+        break;
+    }
+    case 16:
+    {
+        const ZyanI64 distance = (ZyanI64)(instruction->absolute_target_address - source_address -
+            instruction->instruction.length);
+        if ((distance < ZYAN_INT16_MIN) || (distance > ZYAN_INT16_MAX))
+        {
+            return ZYAN_TRUE;
+        }
+        break;
+    }
+    case 32:
+    {
+        const ZyanI64 distance = (ZyanI64)(instruction->absolute_target_address - source_address -
+            instruction->instruction.length);
+        if ((distance < ZYAN_INT32_MIN) || (distance > ZYAN_INT32_MAX))
+        {
+            return ZYAN_TRUE;
+        }
+        break;
+    }
+    default:
+        ZYAN_UNREACHABLE;
+    }
+
+    return ZYAN_FALSE;
 }
 
 /**
@@ -407,8 +441,6 @@ static ZyanBool ZyrexShouldRewriteBranchInstruction(ZyrexRelocationContext* cont
  * @param   length              The length of the written instruction.
  * @param   offset_source       The source offset of the instruction.
  * @param   offset_destination  The destination offset of the instruction.
- *
- * @return  A zyan status code.
  */
 static void ZyrexUpdateRelocationContext(ZyrexRelocationContext* context, ZyanUSize length,
     ZyanU8 offset_source, ZyanU8 offset_destination)
@@ -468,6 +500,13 @@ static ZyanStatus ZyrexRelocateRelativeBranchInstruction(ZyrexRelocationContext*
     ZYAN_ASSERT(context);
     ZYAN_ASSERT(instruction);
 
+    if (!instruction->has_external_target)
+    {
+        // Offsets for relative instructions with internal target addresses are fixed up later by
+        // the `ZyrexUpdateInstructionOffsets` function ...
+        return ZyrexRelocateCommonInstruction(context, instruction);
+    }
+
     if (ZyrexShouldRewriteBranchInstruction(context, instruction))
     {
         // Rewrite branch instructions for which no alternative form with 32-bit offset exists
@@ -509,23 +548,23 @@ static ZyanStatus ZyrexRelocateRelativeBranchInstruction(ZyrexRelocationContext*
             ZyanU8* address = (ZyanU8*)context->destination + context->bytes_written;
 
             // Copy original instruction and modify relative offset
-            ZYAN_MEMCPY(address, (const ZyanU8*)context->source + context->bytes_read, 
+            ZYAN_MEMCPY(address, (const ZyanU8*)context->source + context->bytes_read,
                 instruction->instruction.length);
             *(address + instruction->instruction.raw.imm[0].offset) = 0x02;
             address += instruction->instruction.length;
 
-            ZyrexUpdateRelocationContext(context, instruction->instruction.length, 
+            ZyrexUpdateRelocationContext(context, instruction->instruction.length,
                 (ZyanU8)context->bytes_read, (ZyanU8)context->bytes_written);
 
             // Generate `JMP` to `0` branch
             *address++ = 0xEB;
             *address++ = 0x05;
-            ZyrexUpdateRelocationContext(context, 2, (ZyanU8)context->bytes_read, 
+            ZyrexUpdateRelocationContext(context, 2, (ZyanU8)context->bytes_read,
                 (ZyanU8)context->bytes_written + instruction->instruction.length);
 
             // Generate `JMP` to `1` branch
             ZyrexWriteRelativeJump(address, (ZyanUPointer)instruction->absolute_target_address);
-            ZyrexUpdateRelocationContext(context, 2, (ZyanU8)context->bytes_read, 
+            ZyrexUpdateRelocationContext(context, 2, (ZyanU8)context->bytes_read,
                 (ZyanU8)context->bytes_written + instruction->instruction.length + 2);
 
             return ZYAN_STATUS_SUCCESS;
@@ -578,7 +617,7 @@ static ZyanStatus ZyrexRelocateRelativeBranchInstruction(ZyrexRelocationContext*
 
         // Write relative offset
         *(ZyanI32*)(address) = 
-            ZyrexCalculateRelativeOffset(length, (ZyanUPointer)address, 
+            ZyrexCalculateRelativeOffset(4, (ZyanUPointer)address, 
                 (ZyanUPointer)instruction->absolute_target_address);
 
         // Update relocation context
@@ -588,7 +627,27 @@ static ZyanStatus ZyrexRelocateRelativeBranchInstruction(ZyrexRelocationContext*
         return ZYAN_STATUS_SUCCESS;
     }
 
-    return ZyrexRelocateCommonInstruction(context, instruction);
+    void* const offset_address = (ZyanU8*)context->destination + context->bytes_written +
+        instruction->instruction.raw.imm[0].offset;
+
+    // First copy the instruction like it is ...
+    ZYAN_CHECK(ZyrexRelocateCommonInstruction(context, instruction));
+
+    // Update the relative offset for the new instruction position
+    const ZyanI32 value = ZyrexCalculateRelativeOffset(0,
+        (ZyanUPointer)context->destination + context->bytes_written,
+        (ZyanUPointer)instruction->absolute_target_address);
+
+    switch (instruction->instruction.raw.imm[0].size)
+    {
+    case  8: *((ZyanI8* )offset_address) = (ZyanI8 )value; break;
+    case 16: *((ZyanI16*)offset_address) = (ZyanI16)value; break;
+    case 32: *((ZyanI32*)offset_address) = (ZyanI32)value; break;
+    default:
+        ZYAN_UNREACHABLE;
+    }
+
+    return ZYAN_STATUS_SUCCESS;
 }
 
 /**
@@ -618,7 +677,7 @@ static ZyanStatus ZyrexRelocateRelativeMemoryInstruction(ZyrexRelocationContext*
         ZYAN_CHECK(ZyrexRelocateCommonInstruction(context, instruction));
 
         // Update the relative offset for the new instruction position
-        const ZyanI32 value = ZyrexCalculateRelativeOffset(instruction->instruction.length, 
+        const ZyanI32 value = ZyrexCalculateRelativeOffset(0, 
             (ZyanUPointer)context->destination + context->bytes_written, 
             (ZyanUPointer)instruction->absolute_target_address);
 
