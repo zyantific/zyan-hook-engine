@@ -40,18 +40,18 @@
 
 typedef ZyanU32 (FnHookType)(ZyanU32 param);
 
-static FnHookType* volatile FnHookOriginal = NULL;
-
-ZyanU32 FnHookTarget(ZyanU32 param)
+ZyanU32 ZYAN_NOINLINE FnHookTarget(ZyanU32 param)
 {
-    puts("hello from original\n");
+    puts("hello from original");
 
     return param;
 }
 
-ZyanU32 FnHookCallback(ZyanU32 param)
+static FnHookType* volatile FnHookOriginal = &FnHookTarget;
+
+ZyanU32 ZYAN_NOINLINE FnHookCallback(ZyanU32 param)
 {
-    puts("hello from callback\n");
+    puts("hello from callback");
 
     return (*FnHookOriginal)(param) + 1;
 }
@@ -70,8 +70,6 @@ int main()
     ZyrexTransactionCommit();
 
     printf("%x\n", FnHookTarget(0x1337));
-
-    (void)getchar();
 
     ZyrexTransactionBegin();
     ZyrexRemoveInlineHook((ZyanConstVoidPointer*)&FnHookOriginal);
