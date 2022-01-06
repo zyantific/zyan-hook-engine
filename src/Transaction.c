@@ -504,7 +504,8 @@ ZyanStatus ZyrexTransactionAbort(void)
     ZYAN_ASSERT(g_transaction_data.threads_to_update.data);
 #endif
 
-    ZYAN_VECTOR_FOREACH_MUTABLE(ZyrexOperation, &g_transaction_data.pending_operations, operation,
+    ZYAN_VECTOR_FOREACH_MUTABLE(const ZyrexOperation, &g_transaction_data.pending_operations, 
+        operation,
     {
         ZyrexTrampolineFree(operation->trampoline);
     });
