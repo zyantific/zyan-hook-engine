@@ -1,11 +1,9 @@
 # Zyrex
 
-<img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"><a href="https://gitter.im/zyantific/zyrex?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=body_badge">
-  <img src="https://badges.gitter.im/zyantific/zyrex.svg" alt="Gitter">
-</a>
-<a href="https://discord.zyantific.com/">
-  <img src="https://img.shields.io/discord/390136917779415060.svg?logo=discord&label=Discord">
-</a>
+<img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT">
+<a href="https://github.com/zyantific/zyrex/actions"><img src="https://github.com/zyantific/zyan-hook-engine/workflows/GitHub%20Actions%20CI/badge.svg" alt="GitHub Actions"></a>
+<a href="https://gitter.im/zyantific/zydis?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=body_badge"><img src="https://badges.gitter.im/zyantific/zyan-disassembler-engine.svg" alt="Gitter"></a>
+<a href="https://discord.zyantific.com/"><img src="https://img.shields.io/discord/390136917779415060.svg?logo=discord&label=Discord" alt="Discord"></a>
 
 Advanced x86/x86-64 hooking library for Windows
 
@@ -61,9 +59,11 @@ Either use the [Visual Studio 2017 project](./msvc/) or build Zyrex using [CMake
 ## Versions
 
 #### Scheme
+
 Versions follow the [semantic versioning scheme](https://semver.org/). All stability guarantees apply to the API only — ABI stability between patches cannot be assumed unless explicitly mentioned in the release notes.
 
 #### Branches
+
 - `master` holds the bleeding edge code of the next, unreleased Zyrex version. Elevated amounts of bugs and issues must be expected, API stability is not guaranteed outside of tagged commits.
 - `maintenance/v1` contains the code of the latest stable v1 release.
 
