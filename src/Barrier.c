@@ -34,7 +34,7 @@
 /* ============================================================================================== */
 
 /**
- * @brief   The TLS slot used by the barrier system.
+ * The TLS slot used by the barrier system.
  */
 static ZyanThreadTlsIndex g_barrier_tls_index = 0;
 
@@ -47,16 +47,16 @@ static ZyanThreadTlsIndex g_barrier_tls_index = 0;
 /* ---------------------------------------------------------------------------------------------- */
 
 /**
- * @brief   Defines the `ZyrexBarrierContext` struct.
+ * Defines the `ZyrexBarrierContext` struct.
  */
 typedef struct ZyrexBarrierContext_
 {
     /**
-     * @brief   The barrier context id.
+     * The barrier context id.
      */
     ZyrexBarrierHandle id;
     /**
-     * @brief   The current recursion depth.
+     * The current recursion depth.
      */
     ZyanU32 recursion_depth;
 } ZyrexBarrierContext;
@@ -72,7 +72,7 @@ typedef struct ZyrexBarrierContext_
 /* ---------------------------------------------------------------------------------------------- */
 
 /**
- * @brief   This function is invoked every time a thread exists.
+ * This function is invoked every time a thread exists.
  *
  * @param   data    The data currently stored in the TLS slot.
  */
@@ -94,8 +94,8 @@ ZYAN_THREAD_DECLARE_TLS_CALLBACK(ZyrexBarrierTlsCleanup, ZyanVector, data)
 /* ---------------------------------------------------------------------------------------------- */
 
 /**
- * @brief   Defines a comparison function for the `ZyrexBarrierContext` struct that uses the `id`
- *          field to create an absolute order.
+ * Defines a comparison function for the `ZyrexBarrierContext` struct that uses the `id` field to
+ * create an absolute order.
  */
 ZYAN_DECLARE_COMPARISON_FOR_FIELD(ZyrexBarrierCompareContext, ZyrexBarrierContext, id)
 
@@ -239,7 +239,7 @@ ZyanStatus ZyrexBarrierGetRecursionDepth(ZyrexBarrierHandle handle, ZyanU32* cur
 
     if (status == ZYAN_STATUS_TRUE)
     {
-        ZyrexBarrierContext* const context =
+        const ZyrexBarrierContext* const context =
             (ZyrexBarrierContext*)ZyanVectorGetMutable(vector, found_index);
 
         *current_depth = context->recursion_depth;
