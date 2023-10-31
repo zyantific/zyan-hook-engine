@@ -79,7 +79,7 @@ typedef struct ZyrexAnalyzedInstruction_
      * @brief   Contains the ids of all instructions inside the analyzed code chunk that are
      *          targeting this instruction using a relative offset.
      */
-    ZyanVector/*<ZyanU8>*/ incomming;
+    ZyanVector/*<ZyanU8>*/ incoming;
     /**
      * @brief   The id of an instruction inside the analyzed code chunk which is targeted by
      *          this instruction using a relative offset, or `-1` if not applicable.
@@ -164,7 +164,7 @@ static void ZyrexAnalyzedInstructionDestroy(ZyrexAnalyzedInstruction* item)
 
     if (item->is_internal_target)
     {
-        ZyanVectorDestroy(&item->incomming);   
+        ZyanVectorDestroy(&item->incoming);   
     }
 }
 
@@ -267,11 +267,11 @@ static ZyanStatus ZyrexAnalyzeCode(const void* buffer, ZyanUSize length,
                 if (!current->is_internal_target)
                 {
                     current->is_internal_target = ZYAN_TRUE;
-                    ZYAN_CHECK(ZyanVectorInit(&current->incomming, sizeof(ZyanU8), 2, 
+                    ZYAN_CHECK(ZyanVectorInit(&current->incoming, sizeof(ZyanU8), 2, 
                         ZYAN_NULL));    
                 }
                 const ZyanU8 value = (ZyanU8)j;
-                ZYAN_CHECK(ZyanVectorPushBack(&current->incomming, &value));
+                ZYAN_CHECK(ZyanVectorPushBack(&current->incoming, &value));
             }
         }
     }
@@ -291,6 +291,11 @@ static ZyanStatus ZyrexAnalyzeCode(const void* buffer, ZyanUSize length,
 static ZyanBool ZyrexIsRelativeBranchInstruction(const ZydisDecodedInstruction* instruction)
 {
     ZYAN_ASSERT(instruction);
+
+    if (!instruction->raw.imm[0].is_relative)
+    {
+        return ZYAN_FALSE;
+    }
 
     switch (instruction->mnemonic)
     {
