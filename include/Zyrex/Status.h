@@ -47,7 +47,7 @@ extern "C" {
 /* ---------------------------------------------------------------------------------------------- */
 
 /**
- * @brief   The zydis module id.
+ * @brief   The Zyrex module id.
  */
 #define ZYAN_MODULE_ZYREX   0x200
 

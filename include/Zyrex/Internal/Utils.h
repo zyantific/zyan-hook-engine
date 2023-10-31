@@ -170,8 +170,7 @@ ZYAN_INLINE ZyanStatus ZyrexCalcAbsoluteAddress(const ZydisDecodedInstruction* i
     }
 
     // Relative branch instruction
-    if (instruction->raw.imm[0].is_signed &&
-        instruction->raw.imm[0].is_relative)
+    if (instruction->raw.imm[0].is_signed && instruction->raw.imm[0].is_relative)
     {
         *result_address = (ZyanU64)((ZyanI64)runtime_address + instruction->length +
             instruction->raw.imm[0].value.s);
