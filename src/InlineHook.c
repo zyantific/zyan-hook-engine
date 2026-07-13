@@ -36,92 +36,44 @@
 /* Runtime thread migration                                                                       */
 /* ---------------------------------------------------------------------------------------------- */
 
-#ifdef ZYAN_WINDOWS
-
-ZyanStatus ZyrexMigrateThread(HANDLE thread_handle, const void* source, ZyanUSize source_length,
+ZyanStatus ZyrexMigrateThread(ZyanThreadId thread_id, const void* source, ZyanUSize source_length,
     const void* destination, ZyanUSize destination_length,
-    const ZyrexInstructionTranslationMap* translation_map,
-    ZyrexThreadMigrationDirection direction)
+    const ZyrexInstructionTranslationMap* translation_map, ZyrexThreadMigrationDirection direction)
 {
     ZYAN_UNUSED(destination_length);
 
-    ZYAN_ASSERT(thread_handle);
     ZYAN_ASSERT(source);
     ZYAN_ASSERT(source_length);
     ZYAN_ASSERT(destination);
-    ZYAN_ASSERT(destination_length);
     ZYAN_ASSERT(translation_map);
 
-    ZyanStatus status = ZYAN_STATUS_SUCCESS;
+    // The thread is already suspended by the caller (the transaction). Read its instruction pointer.
+    ZyanUPointer ip;
+    ZYAN_CHECK(ZyanThreadGetInstructionPointer(thread_id, &ip));
 
-    const DWORD suspend_count = SuspendThread(thread_handle);
-    if (suspend_count == (DWORD)(-1))
+    // Nothing to migrate unless the thread is executing inside the source code range.
+    if ((ip < (ZyanUPointer)source) || (ip >= (ZyanUPointer)source + source_length))
     {
-        return ZYAN_STATUS_BAD_SYSTEMCALL;
+        return ZYAN_STATUS_SUCCESS;
     }
 
-    CONTEXT context = { 0 };
-    //ZYAN_MEMSET(&context, 0, sizeof(context));
-    context.ContextFlags = CONTEXT_CONTROL;
-    if (!GetThreadContext(thread_handle, &context))
-    {
-        status = ZYAN_STATUS_BAD_SYSTEMCALL;
-        goto CleanupAndResume;
-    }
-
-#if defined(ZYAN_X64)
-    const ZyanUPointer current_ip = context.Rip;
-#elif defined(ZYAN_X86)
-    const ZyanUPointer current_ip = context.Eip;
-#else
-#   error "Unsupported architecture detected"
-#endif
-    if ((current_ip < (ZyanUPointer)source) || (current_ip > (ZyanUPointer)source + source_length))
-    {
-        goto CleanupAndResume;
-    }
-
-    const ZyanUPointer source_offset = (ZyanUPointer)source - current_ip;
+    const ZyanU8 offset = (ZyanU8)(ip - (ZyanUPointer)source);
     for (ZyanUSize i = 0; i < translation_map->count; ++i)
     {
         switch (direction)
         {
         case ZYREX_THREAD_MIGRATION_DIRECTION_SRC_DST:
-            if (translation_map->items[i].offset_source == (ZyanU8)source_offset)
+            if (translation_map->items[i].offset_source == offset)
             {
-#if defined(ZYAN_X64)
-                context.Rip = (ZyanUPointer)destination + translation_map->items[i].offset_destination;
-#elif defined(ZYAN_X86)
-                context.Eip = (ZyanUPointer)destination + translation_map->items[i].offset_destination;
-#else
-#   error "Unsupported architecture detected"
-#endif
-
-                if (!SetThreadContext(thread_handle, &context))
-                {
-                    status = ZYAN_STATUS_BAD_SYSTEMCALL;
-                }
-
-                goto CleanupAndResume;
+                return ZyanThreadSetInstructionPointer(thread_id,
+                    (ZyanUPointer)destination + translation_map->items[i].offset_destination);
             }
             break;
         case ZYREX_THREAD_MIGRATION_DIRECTION_DST_SRC:
-            if (translation_map->items[i].offset_destination == (ZyanU8)source_offset)
+            if (translation_map->items[i].offset_destination == offset)
             {
-#if defined(ZYAN_X64)
-                context.Rip = (ZyanUPointer)destination + translation_map->items[i].offset_source;
-#elif defined(ZYAN_X86)
-                context.Eip = (ZyanUPointer)destination + translation_map->items[i].offset_source;
-#else
-#   error "Unsupported architecture detected"
-#endif
-
-                if (!SetThreadContext(thread_handle, &context))
-                {
-                    status = ZYAN_STATUS_BAD_SYSTEMCALL;
-                }
-
-                goto CleanupAndResume;
+                return ZyanThreadSetInstructionPointer(thread_id,
+                    (ZyanUPointer)destination + translation_map->items[i].offset_source);
             }
             break;
         default:
@@ -129,27 +81,10 @@ ZyanStatus ZyrexMigrateThread(HANDLE thread_handle, const void* source, ZyanUSiz
         }
     }
 
-    // This should never happen
-    ZYAN_UNREACHABLE;
-
-CleanupAndResume:
-    while (ZYAN_TRUE)
-    {
-        const DWORD value = ResumeThread(thread_handle);
-        if (value == (DWORD)(-1))
-        {
-            return ZYAN_STATUS_BAD_SYSTEMCALL;
-        }
-        if (value <= suspend_count + 1)
-        {
-            break;
-        }
-    }
-
-    return status;
+    // The instruction pointer is inside the range but not at a mapped instruction boundary; leave
+    // it unchanged rather than moving it to an unrelated offset.
+    return ZYAN_STATUS_SUCCESS;
 }
-
-#endif
 
 /* ---------------------------------------------------------------------------------------------- */
 /* Attaching and detaching                                                                        */

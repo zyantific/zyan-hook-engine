@@ -31,6 +31,7 @@
 #ifdef ZYAN_WINDOWS
 #   include <windows.h>
 #endif
+#include <Zycore/API/Thread.h>
 #include <Zycore/Types.h>
 #include <Zyrex/Internal/Trampoline.h>
 
@@ -64,14 +65,10 @@ typedef enum ZyrexThreadMigrationDirection_
 /* Attaching and detaching                                                                        */
 /* ---------------------------------------------------------------------------------------------- */
 
-#ifdef ZYAN_WINDOWS
-
-ZyanStatus ZyrexMigrateThread(HANDLE thread_handle, const void* source, ZyanUSize source_length,
+ZyanStatus ZyrexMigrateThread(ZyanThreadId thread_id, const void* source, ZyanUSize source_length,
     const void* destination, ZyanUSize destination_length,
-    const ZyrexInstructionTranslationMap* translation_map, 
+    const ZyrexInstructionTranslationMap* translation_map,
     ZyrexThreadMigrationDirection direction);
-
-#endif
 
 /* ---------------------------------------------------------------------------------------------- */
 
