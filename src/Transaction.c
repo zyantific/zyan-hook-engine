@@ -83,10 +83,12 @@ typedef struct ZyrexOperation_
      */
     ZyrexTrampolineChunk* trampoline;
     /**
-     * @brief   This value points to the memory that is passed by the user to store the trampoline
-     *          pointer.
+     * @brief   The user-provided pointer that stores the callable "original" - the trampoline while
+     *          the hook is installed, the raw target once removed. It is updated during commit or
+     *          revert while all other threads are suspended, so a concurrent caller never observes
+     *          a state where the patched jump and this pointer disagree.
      */
-    //ZyanConstVoidPointer* trampoline_accessor;
+    ZyanConstVoidPointer* accessor;
 } ZyrexOperation;
 
 /* ============================================================================================== */
@@ -353,6 +355,10 @@ ZyanStatus ZyrexTransactionCommitEx(const void** failed_operation)
 
                 // TODO: Check if code has changed between this call and the Attach*
                 status = ZyrexWriteHookJump(item->address, item->trampoline);
+                if (ZYAN_SUCCESS(status) && item->accessor)
+                {
+                    *(item->accessor) = &item->trampoline->code_buffer;
+                }
                 break;
             }
             case ZYREX_OPERATION_ACTION_REMOVE:
@@ -371,6 +377,10 @@ ZyanStatus ZyrexTransactionCommitEx(const void** failed_operation)
                 }
 
                 status = ZyrexRestoreInstructions(item->address, item->trampoline);
+                if (ZYAN_SUCCESS(status) && item->accessor)
+                {
+                    *(item->accessor) = item->address;
+                }
                 break;
             }
             default:
@@ -437,6 +447,10 @@ ZyanStatus ZyrexTransactionCommitEx(const void** failed_operation)
                         ZYREX_THREAD_MIGRATION_DIRECTION_DST_SRC);
                 }
                 ZYAN_UNUSED(ZyrexRestoreInstructions(undo->address, undo->trampoline));
+                if (undo->accessor)
+                {
+                    *(undo->accessor) = undo->address;
+                }
             }
             else
             {
@@ -451,6 +465,10 @@ ZyanStatus ZyrexTransactionCommitEx(const void** failed_operation)
                         ZYREX_THREAD_MIGRATION_DIRECTION_SRC_DST);
                 }
                 ZYAN_UNUSED(ZyrexWriteHookJump(undo->address, undo->trampoline));
+                if (undo->accessor)
+                {
+                    *(undo->accessor) = &undo->trampoline->code_buffer;
+                }
             }
         }
         // No attach survives a failed transaction; free every attach trampoline (applied-and-
@@ -548,8 +566,7 @@ ZyanStatus ZyrexInstallInlineHook(void* address, const void* callback,
     operation.address = address;
     ZYAN_CHECK(ZyrexTrampolineCreate(address, callback, ZYREX_SIZEOF_RELATIVE_JUMP,
         &operation.trampoline));
-
-    *trampoline = &operation.trampoline->code_buffer;
+    operation.accessor = trampoline;
 
     return ZyanVectorPushBack(&g_transaction_data.pending_operations, &operation);
 }
@@ -586,8 +603,7 @@ ZyanStatus ZyrexRemoveInlineHook(ZyanConstVoidPointer* original)
     };
     operation.address = target;
     operation.trampoline = trampoline;
-
-    *original = target;
+    operation.accessor = original;
 
     return ZyanVectorPushBack(&g_transaction_data.pending_operations, &operation);
 }
