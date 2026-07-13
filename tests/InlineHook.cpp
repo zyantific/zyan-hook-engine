@@ -106,6 +106,73 @@ static ZyanU32 ZYAN_NOINLINE ValidCallback(ZyanU32 param)
     return (*g_valid_original)(param) + 1;
 }
 
+#if defined(ZYAN_GNUC) && defined(ZYAN_X64)
+#include <sys/mman.h>
+#include <cstring>
+#include <unistd.h>
+#endif
+
+static ZyanU32 ZYAN_NOINLINE RevertTestTarget(ZyanU32 param)
+{
+    return param;
+}
+static FnHookType* volatile g_revert_test_original = &RevertTestTarget;
+static ZyanU32 ZYAN_NOINLINE RevertTestCallback(ZyanU32 param)
+{
+    return (*g_revert_test_original)(param) + 1;
+}
+
+TEST(InlineHookTest, RevertOnCommitTimeFailure)
+{
+#if defined(ZYAN_GNUC) && defined(ZYAN_X64)
+    ASSERT_EQ(ZyrexInitialize(), ZYAN_STATUS_SUCCESS);
+    EXPECT_EQ(RevertTestTarget(0x10), static_cast<ZyanU32>(0x10));
+
+    const ZyanUSize page_size = static_cast<ZyanUSize>(sysconf(_SC_PAGESIZE));
+    void* const page = mmap(ZYAN_NULL, page_size, PROT_READ | PROT_WRITE | PROT_EXEC,
+        MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    ASSERT_NE(page, MAP_FAILED);
+
+    // A relocatable prologue (mov [rsp+8],rbx; push rdi; sub rsp,0x20; ret) with no RIP-relative
+    // or branch instructions, so queue-time relocation analysis accepts it as a hookable target.
+    static const unsigned char prologue[] =
+    {
+        0x48, 0x89, 0x5C, 0x24, 0x08, 0x57, 0x48, 0x83, 0xEC, 0x20, 0xC3
+    };
+    std::memcpy(page, prologue, sizeof(prologue));
+    ASSERT_EQ(mprotect(page, page_size, PROT_READ | PROT_EXEC), 0);
+
+    ASSERT_EQ(ZyrexTransactionBegin(), ZYAN_STATUS_SUCCESS);
+
+    // First: a valid install that will be applied during commit.
+    ASSERT_EQ(ZyrexInstallInlineHook(reinterpret_cast<void*>(&RevertTestTarget),
+        reinterpret_cast<const void*>(&RevertTestCallback),
+        (ZyanConstVoidPointer*)(&g_revert_test_original)), ZYAN_STATUS_SUCCESS);
+
+    // Second: a target with a valid relocatable prologue, so it queues successfully; its page
+    // is unmapped below so the commit fails only once it tries to patch this target.
+    ZyanConstVoidPointer page_hook_original = nullptr;
+    ASSERT_EQ(ZyrexInstallInlineHook(page, reinterpret_cast<const void*>(&RevertTestCallback),
+        &page_hook_original), ZYAN_STATUS_SUCCESS);
+
+    ASSERT_EQ(ZyrexUpdateAllThreads(), ZYAN_STATUS_SUCCESS);
+
+    // Yank the page out from under the second operation right before commit, so
+    // `ZyrexWriteHookJump`'s `mprotect` fails once the commit loop reaches it.
+    ASSERT_EQ(munmap(page, page_size), 0);
+
+    const ZyanStatus status = ZyrexTransactionCommit();
+    EXPECT_FALSE(ZYAN_SUCCESS(status));
+
+    // The revert loop must have restored the first, already-applied target.
+    EXPECT_EQ(RevertTestTarget(0x10), static_cast<ZyanU32>(0x10));
+
+    ASSERT_EQ(ZyrexShutdown(), ZYAN_STATUS_SUCCESS);
+#else
+    GTEST_SKIP() << "Requires mmap/mprotect and the GNU x64 prologue bytes (ZYAN_GNUC && ZYAN_X64).";
+#endif
+}
+
 TEST(InlineHookTest, FailedCommitRollsBackAppliedOperations)
 {
 #if defined(ZYAN_GNUC) && defined(ZYAN_X64)
