@@ -151,6 +151,29 @@ static void ZyrexWindowsHandleDestroy(HANDLE* item)
 /* ---------------------------------------------------------------------------------------------- */
 
 /**
+ * @brief   Changes the protection of the page(s) covering `[address, address + size)` and returns
+ *          the previous protection of the first page in `old_protection` (if not `ZYAN_NULL`).
+ *
+ * `mprotect` requires a page-aligned base, so the range is widened to page boundaries; this also
+ * covers a patch that straddles a page boundary.
+ */
+static ZyanStatus ZyrexProtectCode(void* address, ZyanUSize size,
+    ZyanMemoryPageProtection protection, ZyanMemoryPageProtection* old_protection)
+{
+    const ZyanUPointer page_size = (ZyanUPointer)ZyanMemoryGetSystemPageSize();
+    const ZyanUPointer start = ZYAN_ALIGN_DOWN((ZyanUPointer)address, page_size);
+    const ZyanUPointer end   = ZYAN_ALIGN_UP((ZyanUPointer)address + size, page_size);
+
+    if (old_protection)
+    {
+        ZyanMemoryRegionInfo info;
+        ZYAN_CHECK(ZyanMemoryVirtualQuery((const void*)start, &info));
+        *old_protection = info.protection;
+    }
+    return ZyanMemoryVirtualProtect((void*)start, end - start, protection);
+}
+
+/**
  * @brief   Writes the hook jump which redirects the code-flow from the given `address` to the
  *          `trampoline`.
  *
@@ -164,8 +187,9 @@ static ZyanStatus ZyrexWriteHookJump(void* address, const ZyrexTrampolineChunk* 
     ZYAN_ASSERT(address);
     ZYAN_ASSERT(trampoline);
 
-    ZYAN_CHECK(ZyanMemoryVirtualProtect(address, ZYREX_SIZEOF_RELATIVE_JUMP,
-        ZYAN_PAGE_EXECUTE_READWRITE));
+    ZyanMemoryPageProtection old_protection;
+    ZYAN_CHECK(ZyrexProtectCode(address, ZYREX_SIZEOF_RELATIVE_JUMP, ZYAN_PAGE_EXECUTE_READWRITE,
+        &old_protection));
 
 #if defined(ZYAN_X64)
 
@@ -179,10 +203,7 @@ static ZyanStatus ZyrexWriteHookJump(void* address, const ZyrexTrampolineChunk* 
 #   error "Unsupported platform"
 #endif
 
-    // TODO: Restore actual protection
-    ZYAN_CHECK(ZyanMemoryVirtualProtect(address, ZYREX_SIZEOF_RELATIVE_JUMP,
-        ZYAN_PAGE_EXECUTE_READ));
-
+    ZYAN_CHECK(ZyrexProtectCode(address, ZYREX_SIZEOF_RELATIVE_JUMP, old_protection, ZYAN_NULL));
     return ZyanProcessFlushInstructionCache(address, ZYREX_SIZEOF_RELATIVE_JUMP);
 }
 
@@ -197,16 +218,15 @@ static ZyanStatus ZyrexWriteHookJump(void* address, const ZyrexTrampolineChunk* 
  */
 static ZyanStatus ZyrexRestoreInstructions(void* address, const ZyrexTrampolineChunk* trampoline)
 {
-    ZYAN_CHECK(ZyanMemoryVirtualProtect(address, ZYREX_SIZEOF_RELATIVE_JUMP,
-        ZYAN_PAGE_EXECUTE_READWRITE));
+    ZyanMemoryPageProtection old_protection;
+    ZYAN_CHECK(ZyrexProtectCode(address, trampoline->original_code_size,
+        ZYAN_PAGE_EXECUTE_READWRITE, &old_protection));
 
     ZYAN_MEMCPY(address, &trampoline->original_code, trampoline->original_code_size);
 
-    // TODO: Restore actual protection
-    ZYAN_CHECK(ZyanMemoryVirtualProtect(address, ZYREX_SIZEOF_RELATIVE_JUMP,
-        ZYAN_PAGE_EXECUTE_READ));
-
-    return ZyanProcessFlushInstructionCache(address, ZYREX_SIZEOF_RELATIVE_JUMP);
+    ZYAN_CHECK(ZyrexProtectCode(address, trampoline->original_code_size, old_protection,
+        ZYAN_NULL));
+    return ZyanProcessFlushInstructionCache(address, trampoline->original_code_size);
 }
 
 /* ---------------------------------------------------------------------------------------------- */
@@ -371,8 +391,6 @@ ZyanStatus ZyrexTransactionCommit(void)
 
 ZyanStatus ZyrexTransactionCommitEx(const void** failed_operation)
 {
-    ZYAN_UNUSED(failed_operation);
-
     ZyanThreadId tid;
     ZYAN_CHECK(ZyanThreadGetCurrentThreadId(&tid));
 
@@ -467,6 +485,10 @@ ZyanStatus ZyrexTransactionCommitEx(const void** failed_operation)
 
         if (!ZYAN_SUCCESS(status))
         {
+            if (failed_operation)
+            {
+                *failed_operation = item;
+            }
             revert_index = i - 1;
             break;
         }
@@ -479,6 +501,10 @@ ZyanStatus ZyrexTransactionCommitEx(const void** failed_operation)
 
 #ifdef ZYAN_WINDOWS
 
+    ZYAN_VECTOR_FOREACH(HANDLE, &g_transaction_data.threads_to_update, handle,
+    {
+        ResumeThread(handle);
+    });
     ZyanVectorDestroy(&g_transaction_data.threads_to_update);
 
 #endif
@@ -486,7 +512,7 @@ ZyanStatus ZyrexTransactionCommitEx(const void** failed_operation)
     ZyanVectorDestroy(&g_transaction_data.pending_operations);
     g_transaction_data.transaction_thread_id = 0;
 
-    return ZYAN_STATUS_SUCCESS;
+    return status;
 }
 
 ZyanStatus ZyrexTransactionAbort(void)

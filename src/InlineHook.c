@@ -57,7 +57,6 @@ ZyanStatus ZyrexMigrateThread(HANDLE thread_handle, const void* source, ZyanUSiz
     const DWORD suspend_count = SuspendThread(thread_handle);
     if (suspend_count == (DWORD)(-1))
     {
-        CloseHandle(thread_handle);
         return ZYAN_STATUS_BAD_SYSTEMCALL;
     }
 
@@ -139,7 +138,6 @@ CleanupAndResume:
         const DWORD value = ResumeThread(thread_handle);
         if (value == (DWORD)(-1))
         {
-            CloseHandle(thread_handle);
             return ZYAN_STATUS_BAD_SYSTEMCALL;
         }
         if (value <= suspend_count + 1)
