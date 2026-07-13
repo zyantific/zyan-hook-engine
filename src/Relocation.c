@@ -205,8 +205,10 @@ static ZyanStatus ZyrexAnalyzeCode(const void* buffer, ZyanUSize length,
 #   error "Unsupported architecture detected"
 #endif
 
-    ZYAN_CHECK(ZyanVectorInit(instructions, sizeof(ZyrexAnalyzedInstruction), 
-        ZYREX_TRAMPOLINE_MAX_INSTRUCTION_COUNT, 
+    ZyanStatus status;
+
+    ZYAN_CHECK(ZyanVectorInit(instructions, sizeof(ZyrexAnalyzedInstruction),
+        ZYREX_TRAMPOLINE_MAX_INSTRUCTION_COUNT,
         (ZyanMemberProcedure)&ZyrexAnalyzedInstructionDestroy));
 
     // First pass:
@@ -219,8 +221,13 @@ static ZyanStatus ZyrexAnalyzeCode(const void* buffer, ZyanUSize length,
     {
         ZyrexAnalyzedInstruction item;
 
-        ZYAN_CHECK(ZydisDecoderDecodeInstruction(&decoder, ZYAN_NULL, 
-            (const ZyanU8*)buffer + offset, length - offset, &item.instruction));
+        status = ZydisDecoderDecodeInstruction(&decoder, ZYAN_NULL,
+            (const ZyanU8*)buffer + offset, length - offset, &item.instruction);
+        if (!ZYAN_SUCCESS(status))
+        {
+            ZyanVectorDestroy(instructions);
+            return status;
+        }
 
         item.address_offset = offset;
         item.address = (ZyanUPointer)(const ZyanU8*)buffer + offset;
@@ -231,12 +238,22 @@ static ZyanStatus ZyrexAnalyzeCode(const void* buffer, ZyanUSize length,
         item.absolute_target_address = 0;
         if (item.has_relative_target)
         {
-            ZYAN_CHECK(ZyrexCalcAbsoluteAddress(&item.instruction, 
-                (ZyanU64)buffer + offset, &item.absolute_target_address));    
+            status = ZyrexCalcAbsoluteAddress(&item.instruction,
+                (ZyanU64)buffer + offset, &item.absolute_target_address);
+            if (!ZYAN_SUCCESS(status))
+            {
+                ZyanVectorDestroy(instructions);
+                return status;
+            }
         }
         item.is_internal_target = ZYAN_FALSE;
         item.outgoing = (ZyanU8)(-1);
-        ZYAN_CHECK(ZyanVectorPushBack(instructions, &item));
+        status = ZyanVectorPushBack(instructions, &item);
+        if (!ZYAN_SUCCESS(status))
+        {
+            ZyanVectorDestroy(instructions);
+            return status;
+        }
 
         offset += item.instruction.length;
     }
@@ -268,11 +285,21 @@ static ZyanStatus ZyrexAnalyzeCode(const void* buffer, ZyanUSize length,
                 if (!current->is_internal_target)
                 {
                     current->is_internal_target = ZYAN_TRUE;
-                    ZYAN_CHECK(ZyanVectorInit(&current->incoming, sizeof(ZyanU8), 2, 
-                        ZYAN_NULL));    
+                    status = ZyanVectorInit(&current->incoming, sizeof(ZyanU8), 2,
+                        ZYAN_NULL);
+                    if (!ZYAN_SUCCESS(status))
+                    {
+                        ZyanVectorDestroy(instructions);
+                        return status;
+                    }
                 }
                 const ZyanU8 value = (ZyanU8)j;
-                ZYAN_CHECK(ZyanVectorPushBack(&current->incoming, &value));
+                status = ZyanVectorPushBack(&current->incoming, &value);
+                if (!ZYAN_SUCCESS(status))
+                {
+                    ZyanVectorDestroy(instructions);
+                    return status;
+                }
             }
         }
     }
@@ -889,9 +916,11 @@ ZyanStatus ZyrexRelocateCode(const void* source, ZyanUSize source_length,
     context.bytes_read           = 0;
     context.bytes_written        = 0;
 
-    ZYAN_CHECK(ZyrexAnalyzeCode(source, source_length, min_bytes_to_reloc, &context.instructions, 
+    ZYAN_CHECK(ZyrexAnalyzeCode(source, source_length, min_bytes_to_reloc, &context.instructions,
         &context.bytes_to_reloc));
     ZYAN_ASSERT(context.instructions.data);
+
+    ZyanStatus status = ZYAN_STATUS_SUCCESS;
 
     // Relocate instructions
     for (ZyanUSize i = 0; i < context.instructions.size; ++i)
@@ -906,10 +935,15 @@ ZyanStatus ZyrexRelocateCode(const void* source, ZyanUSize source_length,
 
         if (item->has_relative_target)
         {
-            ZYAN_CHECK(ZyrexRelocateRelativeInstruction(&context, item));    
-        } else
+            status = ZyrexRelocateRelativeInstruction(&context, item);
+        }
+        else
         {
-            ZYAN_CHECK(ZyrexRelocateCommonInstruction(&context, item));
+            status = ZyrexRelocateCommonInstruction(&context, item);
+        }
+        if (!ZYAN_SUCCESS(status))
+        {
+            goto cleanup;
         }
 
         context.bytes_read += item->instruction.length;
@@ -921,9 +955,11 @@ ZyanStatus ZyrexRelocateCode(const void* source, ZyanUSize source_length,
     *bytes_read = context.bytes_read;
     *bytes_written = context.bytes_written;
 
-    ZYAN_CHECK(ZyrexUpdateInstructionOffsets(&context));
+    status = ZyrexUpdateInstructionOffsets(&context);
 
-    return ZYAN_STATUS_SUCCESS;
+cleanup:
+    ZyanVectorDestroy(&context.instructions);
+    return status;
 }
 
 /* ============================================================================================== */
