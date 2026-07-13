@@ -77,3 +77,48 @@ TEST(RelocationTest, NonRelativePrologueCopiedVerbatim)
     EXPECT_EQ(chunk.translation_map.items[0].offset_source, 0);
     EXPECT_EQ(chunk.translation_map.items[0].offset_destination, 0);
 }
+
+#include <Zyrex/Internal/Utils.h>
+
+// Resolves the absolute target of the relative instruction decoded at `offset` in `buffer`,
+// treating `buffer` as if it were loaded at its own address.
+static ZyanU64 ResolveTarget(const ZyanU8* buffer, ZyanUSize length, ZyanUSize offset)
+{
+    ZydisDecodedInstruction instr;
+    EXPECT_TRUE(DecodeAt(buffer, length, offset, &instr));
+    ZyanU64 target = 0;
+    EXPECT_EQ(ZyrexCalcAbsoluteAddress(&instr, (ZyanU64)(buffer + offset), &target),
+        ZYAN_STATUS_SUCCESS);
+    return target;
+}
+
+TEST(RelocationTest, InternalBackwardBranchStillTargetsSameInstruction)
+{
+    // nop ; nop ; nop ; jmp short -5  (jumps to the first nop, an internal target)
+    // Offsets: 0:90 1:90 2:90 3:EB 4:FB  -> jmp at 3, len 2, target = 3+2-5 = 0
+    const ZyanU8 source[] = { 0x90, 0x90, 0x90, 0xEB, 0xFB };
+
+    ZyrexTrampolineChunk chunk;
+    InitChunk(&chunk);
+    ZyanUSize read = 0, written = 0;
+    ASSERT_EQ(ZyrexRelocateCode(source, sizeof(source), &chunk, 5, &read, &written),
+        ZYAN_STATUS_SUCCESS);
+    ASSERT_EQ(read, static_cast<ZyanUSize>(5));
+
+    // In the source, the jmp targets absolute (source+0). After relocation the copied jmp must
+    // resolve to the copied first instruction, i.e. code_buffer+0.
+    // Find the relocated jmp: it is the last translation-map entry whose source offset is 3.
+    ZyanU8 jmp_dest_offset = 0xFF;
+    for (ZyanU8 i = 0; i < chunk.translation_map.count; ++i)
+    {
+        if (chunk.translation_map.items[i].offset_source == 3)
+        {
+            jmp_dest_offset = chunk.translation_map.items[i].offset_destination;
+        }
+    }
+    ASSERT_NE(jmp_dest_offset, 0xFF);
+
+    const ZyanU64 resolved = ResolveTarget(chunk.code_buffer, sizeof(chunk.code_buffer),
+        jmp_dest_offset);
+    EXPECT_EQ(resolved, reinterpret_cast<ZyanU64>(&chunk.code_buffer[0]));
+}
