@@ -169,7 +169,9 @@ static ZyanStatus ZyrexGetSizeOfReadableMemoryRegion(const void* address, ZyanUS
         ZYAN_CHECK(ZyanMemoryVirtualQuery(current_address, &info));
 
         // A non-committed (free/reserved) region or a committed-but-unreadable page (e.g. a
-        // `PROT_NONE`/`PAGE_NOACCESS` guard page) bounds the readable range.
+        // `PROT_NONE`/`PAGE_NOACCESS` page) bounds the readable range. Note that on Windows a
+        // `PAGE_GUARD` page is treated as readable by the protection mask below and does not stop
+        // the scan here.
         if ((info.state != ZYAN_MEMORY_REGION_STATE_COMMITTED) ||
             !ZyrexIsReadableProtection(info.protection))
         {
@@ -552,63 +554,100 @@ static ZyanStatus ZyrexTrampolineRegionAllocate(ZyanUPointer address_lo, ZyanUPo
     ZYAN_ASSERT(g_trampoline_data.is_initialized);
 
     const ZyanUSize region_size = g_trampoline_data.region_size;
-    const ZyanUPointer mid = (address_lo + address_hi) / 2;
+    // Overflow-safe midpoint of the target range.
+    const ZyanUPointer mid = address_lo + (address_hi - address_lo) / 2;
 
-    // Two search cursors moving away from the midpoint of the target range: one downwards, one
-    // upwards. Both stay aligned to the allocation granularity because every mapping boundary
-    // reported by `ZyanMemoryVirtualQuery` is granularity-aligned and every step is a multiple of
-    // `region_size`.
+    // Two search cursors move away from the midpoint, one down and one up. Each is retired when it
+    // leaves the reachable +/-2 GiB window, when its query fails, or when a step fails to make
+    // monotonic progress (which bounds the loop structurally rather than relying on address
+    // wraparound). When both are retired, no region is reachable.
     ZyanUPointer cursor_lo = ZYAN_ALIGN_DOWN(mid, region_size);
     ZyanUPointer cursor_hi = ZYAN_ALIGN_UP(mid, region_size);
+    ZyanBool active_lo = ZYAN_TRUE;
+    ZyanBool active_hi = ZYAN_TRUE;
 
-    while (ZYAN_TRUE)
+    while (active_lo || active_hi)
     {
-        ZyanU8 in_range = 0;
-
-        if (ZyrexTrampolineRegionInRange(cursor_lo, address_lo, address_hi))
+        if (active_lo)
         {
-            ++in_range;
-            ZyanMemoryRegionInfo info;
-            ZYAN_CHECK(ZyanMemoryVirtualQuery((const void*)cursor_lo, &info));
-            if ((info.state == ZYAN_MEMORY_REGION_STATE_FREE) && (info.size >= region_size))
+            if (!ZyrexTrampolineRegionInRange(cursor_lo, address_lo, address_hi))
             {
-                void* base = (void*)cursor_lo;
-                if (ZYAN_SUCCESS(ZyanMemoryVirtualAlloc(&base, region_size,
-                    ZYAN_PAGE_EXECUTE_READWRITE)))
+                active_lo = ZYAN_FALSE;
+            }
+            else
+            {
+                ZyanMemoryRegionInfo info;
+                if (!ZYAN_SUCCESS(ZyanMemoryVirtualQuery((const void*)cursor_lo, &info)))
                 {
-                    *region = (ZyrexTrampolineRegion*)base;
-                    goto InitializeRegion;
+                    active_lo = ZYAN_FALSE;
+                }
+                else
+                {
+                    if ((info.state == ZYAN_MEMORY_REGION_STATE_FREE) &&
+                        (info.size >= region_size))
+                    {
+                        void* base = (void*)cursor_lo;
+                        if (ZYAN_SUCCESS(ZyanMemoryVirtualAlloc(&base, region_size,
+                            ZYAN_PAGE_EXECUTE_READWRITE)))
+                        {
+                            *region = (ZyrexTrampolineRegion*)base;
+                            goto InitializeRegion;
+                        }
+                    }
+                    const ZyanUPointer next_lo = (ZyanUPointer)info.base - region_size;
+                    if (next_lo >= cursor_lo) // no downward progress (underflow / stuck)
+                    {
+                        active_lo = ZYAN_FALSE;
+                    }
+                    else
+                    {
+                        cursor_lo = next_lo;
+                    }
                 }
             }
-            // Step below the region that was just examined.
-            cursor_lo = (ZyanUPointer)info.base - region_size;
         }
 
-        if (ZyrexTrampolineRegionInRange(cursor_hi, address_lo, address_hi))
+        if (active_hi)
         {
-            ++in_range;
-            ZyanMemoryRegionInfo info;
-            ZYAN_CHECK(ZyanMemoryVirtualQuery((const void*)cursor_hi, &info));
-            if ((info.state == ZYAN_MEMORY_REGION_STATE_FREE) && (info.size >= region_size))
+            if (!ZyrexTrampolineRegionInRange(cursor_hi, address_lo, address_hi))
             {
-                void* base = (void*)cursor_hi;
-                if (ZYAN_SUCCESS(ZyanMemoryVirtualAlloc(&base, region_size,
-                    ZYAN_PAGE_EXECUTE_READWRITE)))
+                active_hi = ZYAN_FALSE;
+            }
+            else
+            {
+                ZyanMemoryRegionInfo info;
+                if (!ZYAN_SUCCESS(ZyanMemoryVirtualQuery((const void*)cursor_hi, &info)))
                 {
-                    *region = (ZyrexTrampolineRegion*)base;
-                    goto InitializeRegion;
+                    active_hi = ZYAN_FALSE;
+                }
+                else
+                {
+                    if ((info.state == ZYAN_MEMORY_REGION_STATE_FREE) &&
+                        (info.size >= region_size))
+                    {
+                        void* base = (void*)cursor_hi;
+                        if (ZYAN_SUCCESS(ZyanMemoryVirtualAlloc(&base, region_size,
+                            ZYAN_PAGE_EXECUTE_READWRITE)))
+                        {
+                            *region = (ZyrexTrampolineRegion*)base;
+                            goto InitializeRegion;
+                        }
+                    }
+                    const ZyanUPointer next_hi = (ZyanUPointer)info.base + info.size;
+                    if (next_hi <= cursor_hi) // no upward progress (top-of-space sentinel / stuck)
+                    {
+                        active_hi = ZYAN_FALSE;
+                    }
+                    else
+                    {
+                        cursor_hi = next_hi;
+                    }
                 }
             }
-            // Step above the region that was just examined.
-            cursor_hi = (ZyanUPointer)info.base + info.size;
-        }
-
-        // Both cursors have moved outside the reachable +/-2 GiB window: no region available.
-        if (in_range == 0)
-        {
-            return ZYAN_STATUS_OUT_OF_RANGE;
         }
     }
+
+    return ZYAN_STATUS_OUT_OF_RANGE;
 
 InitializeRegion:
     (*region)->header.signature = ZYREX_TRAMPOLINE_REGION_SIGNATURE;

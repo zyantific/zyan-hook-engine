@@ -79,6 +79,12 @@ TEST(TrampolineTest, ManyTrampolinesAllocateAndFree)
     // allocate more, exercising the +/-2 GiB range check and its termination. This is precisely
     // the path that hung before the range-check fix, so it must complete (under the test timeout)
     // and never fail to allocate.
+    //
+    // The `ZYAN_STATUS_OUT_OF_RANGE` path (both search cursors retired without finding a region)
+    // is not exercised here: reserving a full +/-2 GiB window portably in a unit test is
+    // impractical. Termination toward that path is now structurally guaranteed by the per-cursor
+    // range/query/progress guards in `ZyrexTrampolineRegionAllocate`, independent of address
+    // wraparound.
     int callback_sink = 0;
 
     std::vector<ZyrexTrampolineChunk*> chunks;
