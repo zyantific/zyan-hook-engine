@@ -23,3 +23,33 @@
  * SOFTWARE.
 
 ***************************************************************************************************/
+
+/**
+ * @file
+ * @brief   Tests that ZyrexInitialize wires up the barrier subsystem.
+ */
+
+#include <gtest/gtest.h>
+#include <Zyrex/Zyrex.h>
+#include <Zyrex/Barrier.h>
+
+TEST(BarrierTest, InitializeEnablesBarrierApi)
+{
+    ASSERT_EQ(ZyrexInitialize(), ZYAN_STATUS_SUCCESS);
+
+    // After ZyrexInitialize (which must have run ZyrexBarrierSystemInitialize), the barrier API
+    // works without a manual system-init call: first entry for a handle passes, nested entry is
+    // blocked at the default recursion depth of 0.
+    const ZyrexBarrierHandle handle = ZyrexBarrierGetHandle((const void*)0x1234);
+    EXPECT_EQ(ZyrexBarrierTryEnter(handle), ZYAN_STATUS_TRUE);
+    EXPECT_EQ(ZyrexBarrierTryEnter(handle), ZYAN_STATUS_FALSE);
+    EXPECT_EQ(ZyrexBarrierLeave(handle), ZYAN_STATUS_TRUE);
+
+    ASSERT_EQ(ZyrexShutdown(), ZYAN_STATUS_SUCCESS);
+}
+
+int main(int argc, char** argv)
+{
+    ::testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
+}

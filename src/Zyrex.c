@@ -27,6 +27,7 @@
 #include <Zycore/Zycore.h>
 #include <Zydis/Zydis.h>
 #include <Zyrex/Zyrex.h>
+#include <Zyrex/Barrier.h>
 
 /* ============================================================================================== */
 /* Exported functions                                                                             */
@@ -48,16 +49,15 @@ ZyanStatus ZyrexInitialize(void)
     }
     if (!ZydisIsFeatureEnabled(ZYDIS_FEATURE_DECODER))
     {
-        return ZYAN_STATUS_MISSING_DEPENDENCY;     
+        return ZYAN_STATUS_MISSING_DEPENDENCY;
     }
 
-    return ZYAN_STATUS_SUCCESS;
+    return ZyrexBarrierSystemInitialize();
 }
 
 ZyanStatus ZyrexShutdown(void)
 {
-    // nothing to do here at the moment
-    return ZYAN_STATUS_SUCCESS;
+    return ZyrexBarrierSystemShutdown();
 }
 
 /* ---------------------------------------------------------------------------------------------- */
