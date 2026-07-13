@@ -126,6 +126,24 @@ static struct
 /* ---------------------------------------------------------------------------------------------- */
 
 /**
+ * @brief   Checks whether the given page protection permits reading.
+ *
+ * @param   protection  The page protection value from `ZyanMemoryVirtualQuery`.
+ *
+ * @return  `ZYAN_TRUE` if readable, `ZYAN_FALSE` otherwise.
+ */
+static ZyanBool ZyrexIsReadableProtection(ZyanMemoryPageProtection protection)
+{
+#if defined(ZYAN_WINDOWS)
+    return (protection & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY |
+        PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))
+        ? ZYAN_TRUE : ZYAN_FALSE;
+#else
+    return (protection & ZYAN_PAGE_READONLY) ? ZYAN_TRUE : ZYAN_FALSE;
+#endif
+}
+
+/**
  * @brief   Returns the amount of bytes that can be read from the memory region starting at the
  *          given `address` up to a maximum size of `size`.
  *
@@ -150,11 +168,10 @@ static ZyanStatus ZyrexGetSizeOfReadableMemoryRegion(const void* address, ZyanUS
         ZyanMemoryRegionInfo info;
         ZYAN_CHECK(ZyanMemoryVirtualQuery(current_address, &info));
 
-        // A non-committed (free/reserved) region bounds the readable range. `protection` is only
-        // reliable across platforms for committed memory, so committed state is used as the
-        // read-bound condition; a `PROT_NONE` guard page inside committed memory is a rare edge
-        // this best-effort check does not exclude.
-        if (info.state != ZYAN_MEMORY_REGION_STATE_COMMITTED)
+        // A non-committed (free/reserved) region or a committed-but-unreadable page (e.g. a
+        // `PROT_NONE`/`PAGE_NOACCESS` guard page) bounds the readable range.
+        if ((info.state != ZYAN_MEMORY_REGION_STATE_COMMITTED) ||
+            !ZyrexIsReadableProtection(info.protection))
         {
             *size = current_size;
             return ZYAN_STATUS_SUCCESS;
@@ -270,23 +287,28 @@ static ZyanBool ZyrexTrampolineRegionInRange(ZyanUPointer region_address,
     ZYAN_ASSERT(g_trampoline_data.is_initialized);
     ZYAN_ASSERT(ZYAN_IS_ALIGNED_TO(region_address, g_trampoline_data.region_size));
 
-    // Skip the first chunk as it shares memory with the region-header
-    const ZyanIPointer region_base = region_address + sizeof(ZyrexTrampolineChunk);
+    // The region spans [region_address, region_address + region_size). A relative jump can reach a
+    // chunk in this region from a target only if the target is within relative-jump range of the
+    // region. Use the nearest region edge to each target: if even that exceeds the range, no chunk
+    // here can serve the target. Conservative pre-filter; the exact per-chunk check happens in
+    // `ZyrexTrampolineRegionFindChunkInRegion`.
+    const ZyanIPointer region_start = (ZyanIPointer)region_address;
+    const ZyanIPointer region_end   =
+        (ZyanIPointer)region_address + (ZyanIPointer)g_trampoline_data.region_size;
 
-    const ZyanIPointer distance_lo =
-        region_base - (ZyanIPointer)address_lo + (ZyanIPointer)address_lo < region_base
-            ? sizeof(ZyrexTrampolineChunk)
-            : sizeof(ZyrexTrampolineChunk) * (g_trampoline_data.chunks_per_region - 1);
-    if ((ZYAN_ABS(distance_lo) > ZYREX_RANGEOF_RELATIVE_JUMP))
+    const ZyanIPointer lo = (ZyanIPointer)address_lo;
+    const ZyanIPointer hi = (ZyanIPointer)address_hi;
+
+    const ZyanIPointer distance_lo = (lo < region_start) ? (region_start - lo)
+                                   : (lo > region_end)   ? (lo - region_end) : 0;
+    if (distance_lo > ZYREX_RANGEOF_RELATIVE_JUMP)
     {
         return ZYAN_FALSE;
     }
 
-    const ZyanIPointer distance_hi =
-        region_base - (ZyanIPointer)address_hi + (ZyanIPointer)address_hi < region_base
-            ? sizeof(ZyrexTrampolineChunk)
-            : sizeof(ZyrexTrampolineChunk) * (g_trampoline_data.chunks_per_region - 1);
-    if ((ZYAN_ABS(distance_hi) > ZYREX_RANGEOF_RELATIVE_JUMP))
+    const ZyanIPointer distance_hi = (hi < region_start) ? (region_start - hi)
+                                   : (hi > region_end)   ? (hi - region_end) : 0;
+    if (distance_hi > ZYREX_RANGEOF_RELATIVE_JUMP)
     {
         return ZYAN_FALSE;
     }
