@@ -216,3 +216,27 @@ if (ZYREX_BUILD_EXAMPLES)
     zyan_set_common_flags("Barrier")
     zyan_maybe_enable_wpo("Barrier")
 endif ()
+
+# =============================================================================================== #
+# Tests                                                                                           #
+# =============================================================================================== #
+
+option(ZYREX_BUILD_TESTS "Build tests" OFF)
+
+if (ZYREX_BUILD_TESTS)
+    include(FetchContent)
+    FetchContent_Declare(
+        googletest
+        GIT_REPOSITORY https://github.com/google/googletest.git
+        GIT_TAG        v1.14.0
+    )
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(googletest)
+
+    enable_testing()
+
+    add_executable("TestRelocation" "tests/Relocation.cpp")
+    target_link_libraries("TestRelocation" "Zyrex" "Zydis" "Zycore" "gtest" "gtest_main")
+    target_compile_definitions("TestRelocation" PRIVATE "_CRT_SECURE_NO_WARNINGS")
+    add_test("Relocation" "TestRelocation")
+endif ()
