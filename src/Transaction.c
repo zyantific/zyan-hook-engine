@@ -496,7 +496,28 @@ ZyanStatus ZyrexTransactionCommitEx(const void** failed_operation)
 
     if (revert_index >= 0)
     {
-        // TODO: Revert changes
+        for (ZyanISize j = revert_index; j >= 0; --j)
+        {
+            const ZyrexOperation* const undo =
+                ZyanVectorGet(&g_transaction_data.pending_operations, j);
+            ZYAN_ASSERT(undo);
+            if (undo->type != ZYREX_HOOK_TYPE_INLINE)
+            {
+                continue;
+            }
+            switch (undo->action)
+            {
+            case ZYREX_OPERATION_ACTION_ATTACH:
+                ZYAN_UNUSED(ZyrexRestoreInstructions(undo->address, undo->trampoline));
+                ZYAN_UNUSED(ZyrexTrampolineFree(undo->trampoline));
+                break;
+            case ZYREX_OPERATION_ACTION_REMOVE:
+                ZYAN_UNUSED(ZyrexWriteHookJump(undo->address, undo->trampoline));
+                break;
+            default:
+                break;
+            }
+        }
     }
 
 #ifdef ZYAN_WINDOWS
