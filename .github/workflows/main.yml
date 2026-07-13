@@ -1,25 +1,34 @@
 name: GitHub Actions CI
 
+# NOTE: the tests require a Zycore that provides the virtual-memory and thread-control APIs
+# (ZyanMemoryVirtualAlloc / ZyanMemoryVirtualQuery / ZyanThreadEnumerate / ZyanThreadSuspend / ...).
+# The `dependencies/zycore` submodule must point at a commit that includes them for the test job to
+# build. Until that submodule is bumped, keep the test steps informational.
+
 on: [push, pull_request]
 
 jobs:
-  cmake-build:
-    name: CMake build (${{ matrix.image_name }})
-    runs-on: ${{ matrix.image_name }}
+  build-and-test:
+    name: Build and test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
 
     strategy:
+      fail-fast: false
       matrix:
-        image_name: [macOS-latest, windows-2019, ubuntu-20.04]
+        # macos-13 is the x86-64 (Intel) runner; the engine is x86-64 only, so newer arm64 macOS
+        # runners cannot execute the hooking tests.
+        os: [ubuntu-latest, windows-latest, macos-13]
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with: { submodules: recursive }
-      - name: Configuring
-        run: |
-          mkdir build
-          cd build
-          cmake ..
-      - name: Building
-        run: |
-          cmake --build build --config Release
+
+      - name: Configure
+        run: cmake -S . -B build -DZYREX_BUILD_TESTS=ON -DZYREX_BUILD_EXAMPLES=ON
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Test
+        run: ctest --test-dir build --build-config Release --output-on-failure
