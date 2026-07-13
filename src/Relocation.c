@@ -30,6 +30,7 @@
 #include <Zycore/Vector.h>
 #include <Zydis/Zydis.h>
 #include <Zyrex/Internal/Relocation.h>
+#include <Zyrex/Status.h>
 
 /* ============================================================================================== */
 /* Enums and types                                                                                */
@@ -722,10 +723,10 @@ static ZyanStatus ZyrexRelocateRelativeInstruction(ZyrexRelocationContext* conte
     {
     case ZYDIS_MNEMONIC_CALL:
     {
-        // It's not safe to relocate a `CALL` instruction to the trampoline, as the code-flow
-        // will return to the trampoline at some time. If the hook has been removed in the
-        // meantime, the application will crash
-        return ZYAN_STATUS_FAILED; // TODO:
+        // Relocating a relative `CALL` would leave a return address pointing into the trampoline.
+        // Freeing the trampoline while a thread can still return into it would crash, so this is
+        // rejected until a trampoline-reclamation policy is chosen. See the design spec.
+        return ZYREX_STATUS_UNSUPPORTED_INSTRUCTION;
     }
     default:
         break;

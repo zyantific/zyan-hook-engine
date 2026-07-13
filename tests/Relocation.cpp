@@ -122,3 +122,17 @@ TEST(RelocationTest, InternalBackwardBranchStillTargetsSameInstruction)
         jmp_dest_offset);
     EXPECT_EQ(resolved, reinterpret_cast<ZyanU64>(&chunk.code_buffer[0]));
 }
+
+#include <Zyrex/Status.h>
+
+TEST(RelocationTest, RelativeCallInPrologueIsRejected)
+{
+    // call rel32 (E8 ..) -- a relative CALL in the prologue. 5 bytes.
+    const ZyanU8 source[] = { 0xE8, 0x00, 0x00, 0x00, 0x00 };
+
+    ZyrexTrampolineChunk chunk;
+    InitChunk(&chunk);
+    ZyanUSize read = 0, written = 0;
+    EXPECT_EQ(ZyrexRelocateCode(source, sizeof(source), &chunk, 5, &read, &written),
+        ZYREX_STATUS_UNSUPPORTED_INSTRUCTION);
+}
