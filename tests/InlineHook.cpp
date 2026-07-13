@@ -213,3 +213,86 @@ TEST(InlineHookTest, FailedCommitRollsBackAppliedOperations)
     GTEST_SKIP() << "Requires the GNU inline-asm un-hookable stub (ZYAN_GNUC && ZYAN_X64).";
 #endif
 }
+
+static ZyanU32 ZYAN_NOINLINE ReArmTarget(ZyanU32 param)
+{
+    return param;
+}
+// `ZyrexRemoveInlineHook` eagerly rewrites the pointer handed to it to the raw target address at
+// queue time, before the transaction commits. If the callback dereferenced that same pointer, a
+// reverted (re-armed) remove would make it call the hooked function itself, recursing forever.
+// The callback instead uses this separate handle, captured once right after install and never
+// touched by any later remove call, so it always reaches the trampoline.
+static FnHookType* volatile g_rearm_trampoline = nullptr;
+static ZyanU32 ZYAN_NOINLINE ReArmCallback(ZyanU32 param)
+{
+    return (*g_rearm_trampoline)(param) + 1;
+}
+
+TEST(InlineHookTest, RevertReArmsRemovedHookOnCommitFailure)
+{
+#if defined(ZYAN_GNUC) && defined(ZYAN_X64)
+    ASSERT_EQ(ZyrexInitialize(), ZYAN_STATUS_SUCCESS);
+    EXPECT_EQ(ReArmTarget(0x1337), static_cast<ZyanU32>(0x1337));
+
+    // Install a hook on A and commit; A is now hooked.
+    ASSERT_EQ(ZyrexTransactionBegin(), ZYAN_STATUS_SUCCESS);
+    ASSERT_EQ(ZyrexInstallInlineHook(reinterpret_cast<void*>(&ReArmTarget),
+        reinterpret_cast<const void*>(&ReArmCallback),
+        (ZyanConstVoidPointer*)(&g_rearm_trampoline)), ZYAN_STATUS_SUCCESS);
+    ASSERT_EQ(ZyrexUpdateAllThreads(), ZYAN_STATUS_SUCCESS);
+    ASSERT_EQ(ZyrexTransactionCommit(), ZYAN_STATUS_SUCCESS);
+    EXPECT_EQ(ReArmTarget(0x1337), static_cast<ZyanU32>(0x1338));
+
+    // New transaction: remove A's hook (applies first at commit), and install a hook on an
+    // mmap'd target whose page is unmapped before commit, so the commit fails on the second
+    // operation, after the remove of A has already been applied.
+    const ZyanUSize page_size = static_cast<ZyanUSize>(sysconf(_SC_PAGESIZE));
+    void* const page = mmap(ZYAN_NULL, page_size, PROT_READ | PROT_WRITE | PROT_EXEC,
+        MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    ASSERT_NE(page, MAP_FAILED);
+
+    static const unsigned char prologue[] =
+    {
+        0x48, 0x89, 0x5C, 0x24, 0x08, 0x57, 0x48, 0x83, 0xEC, 0x20, 0xC3
+    };
+    std::memcpy(page, prologue, sizeof(prologue));
+    ASSERT_EQ(mprotect(page, page_size, PROT_READ | PROT_EXEC), 0);
+
+    ASSERT_EQ(ZyrexTransactionBegin(), ZYAN_STATUS_SUCCESS);
+
+    // Use a scratch copy for the remove call - `ZyrexRemoveInlineHook` overwrites it with the
+    // raw target address, and `g_rearm_trampoline` must keep pointing at the trampoline.
+    ZyanConstVoidPointer remove_handle = reinterpret_cast<ZyanConstVoidPointer>(g_rearm_trampoline);
+    ASSERT_EQ(ZyrexRemoveInlineHook(&remove_handle), ZYAN_STATUS_SUCCESS);
+
+    ZyanConstVoidPointer page_hook_original = nullptr;
+    ASSERT_EQ(ZyrexInstallInlineHook(page, reinterpret_cast<const void*>(&ReArmCallback),
+        &page_hook_original), ZYAN_STATUS_SUCCESS);
+
+    ASSERT_EQ(ZyrexUpdateAllThreads(), ZYAN_STATUS_SUCCESS);
+
+    // Yank the page out from under the second operation right before commit, so the commit fails
+    // only after the remove of A has already been applied.
+    ASSERT_EQ(munmap(page, page_size), 0);
+
+    const ZyanStatus status = ZyrexTransactionCommit();
+    EXPECT_FALSE(ZYAN_SUCCESS(status));
+
+    // The revert loop must have re-armed A's hook - callable, still returning the hooked value -
+    // proving the trampoline survived the revert instead of being freed out from under it.
+    EXPECT_EQ(ReArmTarget(0x1337), static_cast<ZyanU32>(0x1338));
+
+    // Clean up: remove A's hook in a final successful transaction so the process ends clean.
+    ZyanConstVoidPointer final_handle = reinterpret_cast<ZyanConstVoidPointer>(g_rearm_trampoline);
+    ASSERT_EQ(ZyrexTransactionBegin(), ZYAN_STATUS_SUCCESS);
+    ASSERT_EQ(ZyrexRemoveInlineHook(&final_handle), ZYAN_STATUS_SUCCESS);
+    ASSERT_EQ(ZyrexUpdateAllThreads(), ZYAN_STATUS_SUCCESS);
+    ASSERT_EQ(ZyrexTransactionCommit(), ZYAN_STATUS_SUCCESS);
+    EXPECT_EQ(ReArmTarget(0x1337), static_cast<ZyanU32>(0x1337));
+
+    ASSERT_EQ(ZyrexShutdown(), ZYAN_STATUS_SUCCESS);
+#else
+    GTEST_SKIP() << "Requires mmap/mprotect and the GNU x64 prologue bytes (ZYAN_GNUC && ZYAN_X64).";
+#endif
+}

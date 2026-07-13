@@ -155,7 +155,8 @@ ZYREX_EXPORT ZyanStatus ZyrexTransactionCommit(void);
 /**
  * @brief   Commits the current transaction.
  *
- * @param   failed_operation    Receives a pointer to the operation that failed the transaction.
+ * @param   failed_operation    Receives the target address of the operation that failed the
+ *                              transaction, if any.
  *
  * @return  A zyan status code.
  */

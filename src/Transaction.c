@@ -461,14 +461,6 @@ ZyanStatus ZyrexTransactionCommitEx(const void** failed_operation)
 #endif
 
                 status = ZyrexRestoreInstructions(item->address, item->trampoline);
-                if (ZYAN_SUCCESS(status))
-                {
-                    status = ZyrexTrampolineFree(item->trampoline);
-                    if (status == ZYAN_STATUS_FALSE)
-                    {
-                        status = ZYAN_STATUS_NOT_FOUND;
-                    }
-                }
                 break;
             }
             default:
@@ -487,35 +479,86 @@ ZyanStatus ZyrexTransactionCommitEx(const void** failed_operation)
         {
             if (failed_operation)
             {
-                *failed_operation = item;
+                // The target address is stable; the operation struct is freed with the vector.
+                *failed_operation = item->address;
             }
-            revert_index = i - 1;
+            revert_index = i;
             break;
         }
     }
 
-    if (revert_index >= 0)
+    if (ZYAN_SUCCESS(status))
     {
+        // Every operation applied. The trampolines of removed hooks are no longer referenced;
+        // attach trampolines remain live as the installed hooks.
+        for (ZyanISize i = 0; i < (ZyanISize)g_transaction_data.pending_operations.size; ++i)
+        {
+            const ZyrexOperation* const op =
+                ZyanVectorGet(&g_transaction_data.pending_operations, i);
+            if ((op->type == ZYREX_HOOK_TYPE_INLINE) &&
+                (op->action == ZYREX_OPERATION_ACTION_REMOVE))
+            {
+                ZYAN_UNUSED(ZyrexTrampolineFree(op->trampoline));
+            }
+        }
+    }
+    else
+    {
+        // A commit operation failed. Roll back the applied/attempted operations in reverse. Undos
+        // are idempotent (restoring already-original bytes, or re-writing an already-present jump,
+        // is harmless), so including the failing operation is safe.
         for (ZyanISize j = revert_index; j >= 0; --j)
         {
             const ZyrexOperation* const undo =
                 ZyanVectorGet(&g_transaction_data.pending_operations, j);
-            ZYAN_ASSERT(undo);
             if (undo->type != ZYREX_HOOK_TYPE_INLINE)
             {
                 continue;
             }
-            switch (undo->action)
+            if (undo->action == ZYREX_OPERATION_ACTION_ATTACH)
             {
-            case ZYREX_OPERATION_ACTION_ATTACH:
+#ifdef ZYAN_WINDOWS
+                for (ZyanISize k = 0; k < (ZyanISize)g_transaction_data.threads_to_update.size; ++k)
+                {
+                    const HANDLE* const thread_handle =
+                        (const HANDLE*)ZyanVectorGet(&g_transaction_data.threads_to_update, k);
+                    ZYAN_ASSERT(thread_handle);
+                    ZyrexMigrateThread(*thread_handle, &undo->trampoline->code_buffer,
+                        undo->trampoline->code_buffer_size, undo->address,
+                        undo->trampoline->original_code_size, &undo->trampoline->translation_map,
+                        ZYREX_THREAD_MIGRATION_DIRECTION_DST_SRC);
+                }
+#endif
                 ZYAN_UNUSED(ZyrexRestoreInstructions(undo->address, undo->trampoline));
-                ZYAN_UNUSED(ZyrexTrampolineFree(undo->trampoline));
-                break;
-            case ZYREX_OPERATION_ACTION_REMOVE:
+            }
+            else
+            {
+                // Re-arm the removed hook; its trampoline is still valid (not freed above).
+#ifdef ZYAN_WINDOWS
+                for (ZyanISize k = 0; k < (ZyanISize)g_transaction_data.threads_to_update.size; ++k)
+                {
+                    const HANDLE* const thread_handle =
+                        (const HANDLE*)ZyanVectorGet(&g_transaction_data.threads_to_update, k);
+                    ZYAN_ASSERT(thread_handle);
+                    ZyrexMigrateThread(*thread_handle, undo->address,
+                        undo->trampoline->original_code_size, &undo->trampoline->code_buffer,
+                        undo->trampoline->code_buffer_size, &undo->trampoline->translation_map,
+                        ZYREX_THREAD_MIGRATION_DIRECTION_SRC_DST);
+                }
+#endif
                 ZYAN_UNUSED(ZyrexWriteHookJump(undo->address, undo->trampoline));
-                break;
-            default:
-                break;
+            }
+        }
+        // No attach survives a failed transaction; free every attach trampoline (applied-and-
+        // reverted or never applied). Remove trampolines belong to still-installed hooks - keep them.
+        for (ZyanISize i = 0; i < (ZyanISize)g_transaction_data.pending_operations.size; ++i)
+        {
+            const ZyrexOperation* const op =
+                ZyanVectorGet(&g_transaction_data.pending_operations, i);
+            if ((op->type == ZYREX_HOOK_TYPE_INLINE) &&
+                (op->action == ZYREX_OPERATION_ACTION_ATTACH))
+            {
+                ZYAN_UNUSED(ZyrexTrampolineFree(op->trampoline));
             }
         }
     }
@@ -551,10 +594,14 @@ ZyanStatus ZyrexTransactionAbort(void)
     ZYAN_ASSERT(g_transaction_data.threads_to_update.data);
 #endif
 
-    ZYAN_VECTOR_FOREACH_MUTABLE(const ZyrexOperation, &g_transaction_data.pending_operations, 
+    ZYAN_VECTOR_FOREACH_MUTABLE(const ZyrexOperation, &g_transaction_data.pending_operations,
         operation,
     {
-        ZyrexTrampolineFree(operation->trampoline);
+        if ((operation->type == ZYREX_HOOK_TYPE_INLINE) &&
+            (operation->action == ZYREX_OPERATION_ACTION_ATTACH))
+        {
+            ZyrexTrampolineFree(operation->trampoline);
+        }
     });
 
 #ifdef ZYAN_WINDOWS
