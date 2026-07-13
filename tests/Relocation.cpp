@@ -136,3 +136,22 @@ TEST(RelocationTest, RelativeCallInPrologueIsRejected)
     EXPECT_EQ(ZyrexRelocateCode(source, sizeof(source), &chunk, 5, &read, &written),
         ZYREX_STATUS_UNSUPPORTED_INSTRUCTION);
 }
+
+TEST(RelocationTest, RipRelativeLeaKeepsResolvedTarget)
+{
+    // lea rax, [rip + 0x10]   (48 8D 05 10 00 00 00)  -- RIP-relative memory operand, 7 bytes.
+    const ZyanU8 source[] = { 0x48, 0x8D, 0x05, 0x10, 0x00, 0x00, 0x00 };
+
+    ZyrexTrampolineChunk chunk;
+    InitChunk(&chunk);
+    ZyanUSize read = 0, written = 0;
+    ASSERT_EQ(ZyrexRelocateCode(source, sizeof(source), &chunk, 5, &read, &written),
+        ZYAN_STATUS_SUCCESS);
+    ASSERT_EQ(read, static_cast<ZyanUSize>(7)); // whole instruction copied to keep it intact
+
+    // The RIP-relative target, computed from the source, must be preserved after relocation:
+    // the relocated lea (at code_buffer+0) must resolve to the same absolute address.
+    const ZyanU64 source_target = ResolveTarget(source, sizeof(source), 0);
+    const ZyanU64 reloc_target  = ResolveTarget(chunk.code_buffer, sizeof(chunk.code_buffer), 0);
+    EXPECT_EQ(reloc_target, source_target);
+}
