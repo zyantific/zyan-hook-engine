@@ -327,6 +327,7 @@ static ZyanBool ZyrexIsRelativeBranchInstruction(const ZydisDecodedInstruction* 
 
     switch (instruction->mnemonic)
     {
+    case ZYDIS_MNEMONIC_CALL:
     case ZYDIS_MNEMONIC_JMP:
     case ZYDIS_MNEMONIC_JO:
     case ZYDIS_MNEMONIC_JNO:
@@ -542,6 +543,14 @@ static ZyanStatus ZyrexRelocateRelativeBranchInstruction(ZyrexRelocationContext*
 
     if (ZyrexShouldRewriteBranchInstruction(context, instruction))
     {
+        if (instruction->instruction.mnemonic == ZYDIS_MNEMONIC_CALL)
+        {
+            // The target no longer fits a `rel32` from the trampoline. A near `CALL` (E8) has no
+            // larger relative form, and rewriting it to an absolute-call thunk is out of scope, so
+            // reject it cleanly rather than fall through to `ZYAN_UNREACHABLE`.
+            return ZYREX_STATUS_UNSUPPORTED_INSTRUCTION;
+        }
+
         // Rewrite branch instructions for which no alternative form with 32-bit offset exists
         switch (instruction->instruction.mnemonic)
         {
@@ -746,18 +755,9 @@ static ZyanStatus ZyrexRelocateRelativeInstruction(ZyrexRelocationContext* conte
     ZYAN_ASSERT(context);
     ZYAN_ASSERT(instruction);
 
-    switch (instruction->instruction.mnemonic)
-    {
-    case ZYDIS_MNEMONIC_CALL:
-    {
-        // Relocating a relative `CALL` would leave a return address pointing into the trampoline.
-        // Freeing the trampoline while a thread can still return into it would crash, so this is
-        // rejected until a trampoline-reclamation policy is chosen. See the design spec.
-        return ZYREX_STATUS_UNSUPPORTED_INSTRUCTION;
-    }
-    default:
-        break;
-    }
+    // A relocated relative `CALL` leaves a return address pointing into the trampoline. That is
+    // safe because a removed trampoline is quarantined by default (its memory is never released
+    // while a thread might return into it). See the trampoline-reclamation section of the spec.
 
     // Relocate relative branch instruction
     if (ZyrexIsRelativeBranchInstruction(&instruction->instruction))
@@ -908,9 +908,11 @@ ZyanStatus ZyrexRelocateCode(const void* source, ZyanUSize source_length,
     context.source               = source;
     context.source_length        = source_length;
     context.destination          = &trampoline->code_buffer;
-    context.destination_length   = ZYREX_TRAMPOLINE_MAX_CODE_SIZE + 
+    context.destination_length   = ZYREX_TRAMPOLINE_MAX_CODE_SIZE +
                                    ZYREX_TRAMPOLINE_MAX_CODE_SIZE_BONUS;
     context.translation_map      = &trampoline->translation_map;
+    // Start with an empty translation map; a reused chunk still holds the previous hook's entries.
+    context.translation_map->count = 0;
     context.instructions_read    = 0;
     context.instructions_written = 0;
     context.bytes_read           = 0;

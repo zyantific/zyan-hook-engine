@@ -125,16 +125,24 @@ TEST(RelocationTest, InternalBackwardBranchStillTargetsSameInstruction)
 
 #include <Zyrex/Status.h>
 
-TEST(RelocationTest, RelativeCallInPrologueIsRejected)
+TEST(RelocationTest, RelativeCallInPrologueRelocatedKeepsTarget)
 {
-    // call rel32 (E8 ..) -- a relative CALL in the prologue. 5 bytes.
-    const ZyanU8 source[] = { 0xE8, 0x00, 0x00, 0x00, 0x00 };
+    // call rel32 to an external target (E8 10 00 00 00 -> target = source + 5 + 0x10). 5 bytes.
+    const ZyanU8 source[] = { 0xE8, 0x10, 0x00, 0x00, 0x00 };
 
     ZyrexTrampolineChunk chunk;
     InitChunk(&chunk);
     ZyanUSize read = 0, written = 0;
-    EXPECT_EQ(ZyrexRelocateCode(source, sizeof(source), &chunk, 5, &read, &written),
-        ZYREX_STATUS_UNSUPPORTED_INSTRUCTION);
+    ASSERT_EQ(ZyrexRelocateCode(source, sizeof(source), &chunk, 5, &read, &written),
+        ZYAN_STATUS_SUCCESS);
+    ASSERT_EQ(read, static_cast<ZyanUSize>(5));
+
+    // Still an E8 near-call, and its recomputed rel32 must resolve to the same absolute target as
+    // the source call.
+    EXPECT_EQ(chunk.code_buffer[0], static_cast<ZyanU8>(0xE8));
+    const ZyanU64 source_target = ResolveTarget(source, sizeof(source), 0);
+    const ZyanU64 reloc_target  = ResolveTarget(chunk.code_buffer, sizeof(chunk.code_buffer), 0);
+    EXPECT_EQ(reloc_target, source_target);
 }
 
 TEST(RelocationTest, RipRelativeLeaKeepsResolvedTarget)

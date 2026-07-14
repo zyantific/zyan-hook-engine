@@ -70,6 +70,13 @@ typedef union ZyrexTrampolineRegion_
          * @rief    The number of unused trampoline-chunks.
          */
         ZyanUSize number_of_unused_chunks;
+        /**
+         * @brief   The number of quarantined trampoline-chunks.
+         *
+         * Quarantined chunks are neither reused nor counted as unused, and a region is never
+         * released while any of them live in it. Keeps the reclamation invariant explicit.
+         */
+        ZyanUSize number_of_quarantined_chunks;
     } header;
     /**
      * @brief   The trampoline-chunks.
@@ -347,7 +354,8 @@ static ZyanBool ZyrexTrampolineRegionFindChunkInRegion(ZyrexTrampolineRegion* re
     // Skip the first chunk as it shares memory with the region-header
     for (ZyanUSize i = 1; i < g_trampoline_data.chunks_per_region; ++i)
     {
-        if (region->chunks[i].is_used)
+        // A quarantined chunk must never be reused: a thread may still reference its memory.
+        if (region->chunks[i].is_used || region->chunks[i].is_quarantined)
         {
             continue;
         }
@@ -652,6 +660,7 @@ static ZyanStatus ZyrexTrampolineRegionAllocate(ZyanUPointer address_lo, ZyanUPo
 InitializeRegion:
     (*region)->header.signature = ZYREX_TRAMPOLINE_REGION_SIGNATURE;
     (*region)->header.number_of_unused_chunks = g_trampoline_data.chunks_per_region - 1;
+    (*region)->header.number_of_quarantined_chunks = 0;
 
     return ZYAN_STATUS_SUCCESS;
 }
@@ -702,6 +711,7 @@ static ZyanStatus ZyrexTrampolineChunkInit(ZyrexTrampolineChunk* chunk, const vo
     ZYAN_ASSERT(min_bytes_to_reloc <= max_bytes_to_read);
 
     chunk->is_used = ZYAN_TRUE;
+    chunk->is_quarantined = ZYAN_FALSE;
     chunk->callback_address = (ZyanUPointer)callback;
 
 #if defined(ZYAN_X64)
@@ -895,7 +905,11 @@ ZyanStatus ZyrexTrampolineFree(ZyrexTrampolineChunk* trampoline)
     }
 
     ZyrexTrampolineRegion* const region = (ZyrexTrampolineRegion*)region_address;
-    if (region->header.number_of_unused_chunks == g_trampoline_data.chunks_per_region - 1 - 1)
+    // Only unmap the region once this is its last live chunk and it holds no quarantined chunk.
+    // Unmapping a region with a quarantined chunk would reintroduce the use-after-free the
+    // quarantine exists to prevent.
+    if ((region->header.number_of_unused_chunks == g_trampoline_data.chunks_per_region - 1 - 1) &&
+        (region->header.number_of_quarantined_chunks == 0))
     {
         ZYAN_CHECK(ZyrexTrampolineRegionRemove(region));
         ZYAN_CHECK(ZyrexTrampolineRegionFree(region));
@@ -915,6 +929,67 @@ ZyanStatus ZyrexTrampolineFree(ZyrexTrampolineChunk* trampoline)
         ZYAN_CHECK(ZyanVectorDestroy(&g_trampoline_data.regions));
         g_trampoline_data.is_initialized = ZYAN_FALSE;
     }
+
+    return ZYAN_STATUS_SUCCESS;
+}
+
+ZyanStatus ZyrexTrampolineQuarantine(ZyrexTrampolineChunk* trampoline)
+{
+    if (!trampoline)
+    {
+        return ZYAN_STATUS_INVALID_ARGUMENT;
+    }
+    if (!g_trampoline_data.is_initialized)
+    {
+        return ZYAN_STATUS_INVALID_OPERATION;
+    }
+
+    const ZyanUPointer region_address = ZYAN_ALIGN_DOWN((ZyanUPointer)trampoline,
+        g_trampoline_data.region_size);
+    ZyanUSize found_index;
+    const ZyanStatus status =
+        ZyanVectorBinarySearch(&g_trampoline_data.regions, &region_address, &found_index,
+            (ZyanComparison)&ZyanComparePointer);
+    ZYAN_CHECK(status);
+
+    if (status == ZYAN_STATUS_FALSE)
+    {
+        return ZYAN_STATUS_NOT_FOUND;
+    }
+
+    ZyrexTrampolineRegion* const region = (ZyrexTrampolineRegion*)region_address;
+
+    // Retire the chunk without touching `number_of_unused_chunks`, so it is neither reused nor
+    // able to bring the region to the release threshold. The region stays mapped for the process
+    // lifetime.
+    ZYAN_CHECK(ZyrexTrampolineRegionUnprotect(region));
+    trampoline->is_used = ZYAN_FALSE;
+    trampoline->is_quarantined = ZYAN_TRUE;
+    ++region->header.number_of_quarantined_chunks;
+    ZYAN_CHECK(ZyrexTrampolineRegionProtect(region));
+
+    return ZYAN_STATUS_SUCCESS;
+}
+
+ZyanStatus ZyrexTrampolineReleaseAll(void)
+{
+    if (!g_trampoline_data.is_initialized)
+    {
+        return ZYAN_STATUS_SUCCESS;
+    }
+
+    ZyanUSize size;
+    ZYAN_CHECK(ZyanVectorGetSize(&g_trampoline_data.regions, &size));
+    for (ZyanUSize i = 0; i < size; ++i)
+    {
+        ZyrexTrampolineRegion** const element =
+            ZyanVectorGetMutable(&g_trampoline_data.regions, i);
+        ZYAN_ASSERT(element && *element);
+        ZYAN_UNUSED(ZyrexTrampolineRegionFree(*element));
+    }
+
+    ZYAN_CHECK(ZyanVectorDestroy(&g_trampoline_data.regions));
+    g_trampoline_data.is_initialized = ZYAN_FALSE;
 
     return ZYAN_STATUS_SUCCESS;
 }

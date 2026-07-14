@@ -79,8 +79,9 @@ TEST(InlineHookTest, InstallCallRemove)
     ASSERT_EQ(ZyrexShutdown(), ZYAN_STATUS_SUCCESS);
 }
 
-// A function whose first bytes are a relative CALL, which the relocation engine rejects, so a
-// hook install on it fails - used to force a mid-transaction commit failure.
+// A function whose first byte is an opcode invalid in 64-bit long mode (0x06, `PUSH ES`), which
+// the relocation engine's decode step rejects, so a hook install on it fails - used to force the
+// transaction down its rollback path.
 extern "C" ZyanU32 UnhookableTarget(ZyanU32 param);
 
 #if defined(ZYAN_GNUC) && defined(ZYAN_X64)
@@ -88,8 +89,8 @@ __asm__(
     ".text\n"
     ".globl UnhookableTarget\n"
     "UnhookableTarget:\n"
-    "    call 1f\n"     // relative CALL in the first bytes -> relocation rejects the prologue
-    "1:  mov %edi, %eax\n"
+    "    .byte 0x06\n"  // PUSH ES: invalid in 64-bit long mode -> relocation rejects the prologue
+    "    mov %edi, %eax\n"
     "    ret\n"
 );
 #else
@@ -295,4 +296,150 @@ TEST(InlineHookTest, RevertReArmsRemovedHookOnCommitFailure)
 #else
     GTEST_SKIP() << "Requires mmap/mprotect and the GNU x64 prologue bytes (ZYAN_GNUC && ZYAN_X64).";
 #endif
+}
+
+// A function whose first 5 bytes are a relative CALL (E8 rel32) to a nearby helper that loads a
+// bias into eax; the function then returns bias + param. Hooking it forces the relocation engine
+// to relocate the CALL into the trampoline, and calling the original through the trampoline
+// executes that relocated CALL - exercising a return address pushed into the trampoline.
+extern "C" ZyanU32 CallPrologueTarget(ZyanU32 param);
+
+#if defined(ZYAN_GNUC) && defined(ZYAN_X64)
+__asm__(
+    ".text\n"
+    ".globl CallPrologueTarget\n"
+    "CallPrologueTarget:\n"
+    "    call CallPrologueBias\n"  // E8 rel32 (5 bytes) - the relocated instruction
+    "    addl %edi, %eax\n"        // System V: param in edi, result in eax -> bias + param
+    "    ret\n"
+    "CallPrologueBias:\n"
+    "    movl $0x100, %eax\n"
+    "    ret\n"
+);
+#endif
+
+static FnHookType* volatile g_call_original = &CallPrologueTarget;
+static ZyanU32 ZYAN_NOINLINE CallPrologueCallback(ZyanU32 param)
+{
+    return (*g_call_original)(param) + 0x11;
+}
+
+TEST(InlineHookTest, RelativeCallInPrologueHookedAndRemoved)
+{
+#if defined(ZYAN_GNUC) && defined(ZYAN_X64)
+    ASSERT_EQ(ZyrexInitialize(), ZYAN_STATUS_SUCCESS);
+
+    // Unhooked: bias (0x100) + param.
+    EXPECT_EQ(CallPrologueTarget(0x1000), static_cast<ZyanU32>(0x1100));
+
+    ASSERT_EQ(ZyrexTransactionBegin(), ZYAN_STATUS_SUCCESS);
+    ASSERT_EQ(ZyrexInstallInlineHook(reinterpret_cast<void*>(&CallPrologueTarget),
+        reinterpret_cast<const void*>(&CallPrologueCallback),
+        (ZyanConstVoidPointer*)(&g_call_original)), ZYAN_STATUS_SUCCESS);
+    ASSERT_EQ(ZyrexUpdateAllThreads(), ZYAN_STATUS_SUCCESS);
+    ASSERT_EQ(ZyrexTransactionCommit(), ZYAN_STATUS_SUCCESS);
+
+    // Hooked: the callback runs the original via the trampoline (executing the relocated CALL) and
+    // adds 0x11, i.e. (0x100 + param) + 0x11.
+    EXPECT_EQ(CallPrologueTarget(0x1000), static_cast<ZyanU32>(0x1111));
+
+    ASSERT_EQ(ZyrexTransactionBegin(), ZYAN_STATUS_SUCCESS);
+    ASSERT_EQ(ZyrexRemoveInlineHook((ZyanConstVoidPointer*)(&g_call_original)),
+        ZYAN_STATUS_SUCCESS);
+    ASSERT_EQ(ZyrexUpdateAllThreads(), ZYAN_STATUS_SUCCESS);
+    ASSERT_EQ(ZyrexTransactionCommit(), ZYAN_STATUS_SUCCESS);
+
+    // Unhooked again.
+    EXPECT_EQ(CallPrologueTarget(0x1000), static_cast<ZyanU32>(0x1100));
+
+    ASSERT_EQ(ZyrexShutdown(), ZYAN_STATUS_SUCCESS);
+#else
+    GTEST_SKIP() << "Requires the GNU x64 CALL-prologue stub (ZYAN_GNUC && ZYAN_X64).";
+#endif
+}
+
+static ZyanU32 ZYAN_NOINLINE ReleaseTarget(ZyanU32 param)
+{
+    return param;
+}
+static FnHookType* volatile g_release_original = &ReleaseTarget;
+static ZyanU32 ZYAN_NOINLINE ReleaseCallback(ZyanU32 param)
+{
+    return (*g_release_original)(param) + 1;
+}
+
+TEST(InlineHookTest, RemoveWithReleaseFlagCommits)
+{
+    ASSERT_EQ(ZyrexInitialize(), ZYAN_STATUS_SUCCESS);
+    EXPECT_EQ(ReleaseTarget(0x1337), static_cast<ZyanU32>(0x1337));
+
+    ASSERT_EQ(ZyrexTransactionBegin(), ZYAN_STATUS_SUCCESS);
+    ASSERT_EQ(ZyrexInstallInlineHook(reinterpret_cast<void*>(&ReleaseTarget),
+        reinterpret_cast<const void*>(&ReleaseCallback),
+        (ZyanConstVoidPointer*)(&g_release_original)), ZYAN_STATUS_SUCCESS);
+    ASSERT_EQ(ZyrexUpdateAllThreads(), ZYAN_STATUS_SUCCESS);
+    ASSERT_EQ(ZyrexTransactionCommit(), ZYAN_STATUS_SUCCESS);
+    EXPECT_EQ(ReleaseTarget(0x1337), static_cast<ZyanU32>(0x1338));
+
+    // Remove with the release flag: the caller asserts no thread still references the trampoline
+    // (single-threaded here), so its memory is unmapped rather than quarantined.
+    ASSERT_EQ(ZyrexTransactionBegin(), ZYAN_STATUS_SUCCESS);
+    ASSERT_EQ(ZyrexRemoveInlineHookEx((ZyanConstVoidPointer*)(&g_release_original),
+        ZYREX_REMOVE_HOOK_FLAG_RELEASE_TRAMPOLINE), ZYAN_STATUS_SUCCESS);
+    ASSERT_EQ(ZyrexUpdateAllThreads(), ZYAN_STATUS_SUCCESS);
+    ASSERT_EQ(ZyrexTransactionCommit(), ZYAN_STATUS_SUCCESS);
+    EXPECT_EQ(ReleaseTarget(0x1337), static_cast<ZyanU32>(0x1337));
+
+    ASSERT_EQ(ZyrexShutdown(), ZYAN_STATUS_SUCCESS);
+}
+
+static ZyanU32 ZYAN_NOINLINE ShutdownReleaseTarget(ZyanU32 param)
+{
+    return param;
+}
+static FnHookType* volatile g_shutdown_original = &ShutdownReleaseTarget;
+static ZyanU32 ZYAN_NOINLINE ShutdownReleaseCallback(ZyanU32 param)
+{
+    return (*g_shutdown_original)(param) + 1;
+}
+
+TEST(InlineHookTest, ShutdownExReleasesQuarantinedTrampolines)
+{
+    ASSERT_EQ(ZyrexInitialize(), ZYAN_STATUS_SUCCESS);
+
+    // Install then remove with the default (quarantine) policy, leaving a quarantined trampoline.
+    ASSERT_EQ(ZyrexTransactionBegin(), ZYAN_STATUS_SUCCESS);
+    ASSERT_EQ(ZyrexInstallInlineHook(reinterpret_cast<void*>(&ShutdownReleaseTarget),
+        reinterpret_cast<const void*>(&ShutdownReleaseCallback),
+        (ZyanConstVoidPointer*)(&g_shutdown_original)), ZYAN_STATUS_SUCCESS);
+    ASSERT_EQ(ZyrexUpdateAllThreads(), ZYAN_STATUS_SUCCESS);
+    ASSERT_EQ(ZyrexTransactionCommit(), ZYAN_STATUS_SUCCESS);
+
+    ASSERT_EQ(ZyrexTransactionBegin(), ZYAN_STATUS_SUCCESS);
+    ASSERT_EQ(ZyrexRemoveInlineHook((ZyanConstVoidPointer*)(&g_shutdown_original)),
+        ZYAN_STATUS_SUCCESS);
+    ASSERT_EQ(ZyrexUpdateAllThreads(), ZYAN_STATUS_SUCCESS);
+    ASSERT_EQ(ZyrexTransactionCommit(), ZYAN_STATUS_SUCCESS);
+    EXPECT_EQ(ShutdownReleaseTarget(0x1337), static_cast<ZyanU32>(0x1337));
+
+    // Finalize with the release flag: the quarantined trampoline memory is reclaimed. The
+    // subsystem must tear down and re-initialize cleanly, proving the release path is sound.
+    ASSERT_EQ(ZyrexShutdownEx(ZYREX_SHUTDOWN_FLAG_RELEASE_TRAMPOLINES), ZYAN_STATUS_SUCCESS);
+
+    ASSERT_EQ(ZyrexInitialize(), ZYAN_STATUS_SUCCESS);
+    ASSERT_EQ(ZyrexTransactionBegin(), ZYAN_STATUS_SUCCESS);
+    ASSERT_EQ(ZyrexInstallInlineHook(reinterpret_cast<void*>(&ShutdownReleaseTarget),
+        reinterpret_cast<const void*>(&ShutdownReleaseCallback),
+        (ZyanConstVoidPointer*)(&g_shutdown_original)), ZYAN_STATUS_SUCCESS);
+    ASSERT_EQ(ZyrexUpdateAllThreads(), ZYAN_STATUS_SUCCESS);
+    ASSERT_EQ(ZyrexTransactionCommit(), ZYAN_STATUS_SUCCESS);
+    EXPECT_EQ(ShutdownReleaseTarget(0x1337), static_cast<ZyanU32>(0x1338));
+
+    ASSERT_EQ(ZyrexTransactionBegin(), ZYAN_STATUS_SUCCESS);
+    ASSERT_EQ(ZyrexRemoveInlineHookEx((ZyanConstVoidPointer*)(&g_shutdown_original),
+        ZYREX_REMOVE_HOOK_FLAG_RELEASE_TRAMPOLINE), ZYAN_STATUS_SUCCESS);
+    ASSERT_EQ(ZyrexUpdateAllThreads(), ZYAN_STATUS_SUCCESS);
+    ASSERT_EQ(ZyrexTransactionCommit(), ZYAN_STATUS_SUCCESS);
+
+    ASSERT_EQ(ZyrexShutdownEx(ZYREX_SHUTDOWN_FLAG_RELEASE_TRAMPOLINES), ZYAN_STATUS_SUCCESS);
 }

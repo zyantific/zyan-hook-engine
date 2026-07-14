@@ -103,3 +103,73 @@ TEST(TrampolineTest, ManyTrampolinesAllocateAndFree)
         EXPECT_EQ(ZyrexTrampolineFree(chunk), ZYAN_STATUS_SUCCESS);
     }
 }
+
+TEST(TrampolineTest, QuarantineRetainsChunkAndPreventsReuse)
+{
+    int callback_sink = 0;
+
+    ZyrexTrampolineChunk* chunk = nullptr;
+    ASSERT_EQ(ZyrexTrampolineCreate(g_function, &callback_sink, ZYREX_SIZEOF_RELATIVE_JUMP, &chunk),
+        ZYAN_STATUS_SUCCESS);
+    ASSERT_NE(chunk, nullptr);
+
+    // Snapshot the saved original bytes so we can prove the memory stays valid after quarantine.
+    ZyanU8 saved_original[sizeof(chunk->original_code)];
+    std::memcpy(saved_original, chunk->original_code, sizeof(saved_original));
+    const ZyanU8 saved_original_size = chunk->original_code_size;
+
+    ASSERT_EQ(ZyrexTrampolineQuarantine(chunk), ZYAN_STATUS_SUCCESS);
+
+    // The chunk is retired: no longer in use, marked quarantined, and no longer findable.
+    EXPECT_FALSE(chunk->is_used);
+    EXPECT_TRUE(chunk->is_quarantined);
+    ZyrexTrampolineChunk* found = nullptr;
+    EXPECT_EQ(ZyrexTrampolineFind(&chunk->code_buffer, &found), ZYAN_STATUS_FALSE);
+
+    // Its memory stays valid (the saved original bytes are intact).
+    EXPECT_EQ(chunk->original_code_size, saved_original_size);
+    EXPECT_EQ(std::memcmp(chunk->original_code, saved_original, saved_original_size), 0);
+
+    // A new trampoline for the same target must not reuse the quarantined chunk.
+    ZyrexTrampolineChunk* other = nullptr;
+    ASSERT_EQ(ZyrexTrampolineCreate(g_function, &callback_sink, ZYREX_SIZEOF_RELATIVE_JUMP, &other),
+        ZYAN_STATUS_SUCCESS);
+    ASSERT_NE(other, nullptr);
+    EXPECT_NE(other, chunk);
+
+    // The quarantined chunk is still resident after freeing the unrelated one.
+    EXPECT_EQ(ZyrexTrampolineFree(other), ZYAN_STATUS_SUCCESS);
+    EXPECT_TRUE(chunk->is_quarantined);
+    EXPECT_EQ(std::memcmp(chunk->original_code, saved_original, saved_original_size), 0);
+
+    // Release everything (including the quarantined chunk) so this test leaves no region mapped.
+    EXPECT_EQ(ZyrexTrampolineReleaseAll(), ZYAN_STATUS_SUCCESS);
+}
+
+TEST(TrampolineTest, ReleaseAllTearsDownIncludingQuarantined)
+{
+    int callback_sink = 0;
+
+    ZyrexTrampolineChunk* live = nullptr;
+    ASSERT_EQ(ZyrexTrampolineCreate(g_function, &callback_sink, ZYREX_SIZEOF_RELATIVE_JUMP, &live),
+        ZYAN_STATUS_SUCCESS);
+    ZyrexTrampolineChunk* quarantined = nullptr;
+    ASSERT_EQ(
+        ZyrexTrampolineCreate(g_function, &callback_sink, ZYREX_SIZEOF_RELATIVE_JUMP, &quarantined),
+        ZYAN_STATUS_SUCCESS);
+    ASSERT_EQ(ZyrexTrampolineQuarantine(quarantined), ZYAN_STATUS_SUCCESS);
+
+    // Release both the live and the quarantined chunk's regions and tear the subsystem down.
+    ASSERT_EQ(ZyrexTrampolineReleaseAll(), ZYAN_STATUS_SUCCESS);
+
+    // After a full release the subsystem is uninitialized: a lookup reports invalid operation
+    // rather than dereferencing freed memory. (Only the pointer value is used, not the mapping.)
+    ZyrexTrampolineChunk* found = nullptr;
+    EXPECT_EQ(ZyrexTrampolineFind(&live->code_buffer, &found), ZYAN_STATUS_INVALID_OPERATION);
+
+    // Re-initialization works cleanly after a full release.
+    ZyrexTrampolineChunk* fresh = nullptr;
+    EXPECT_EQ(ZyrexTrampolineCreate(g_function, &callback_sink, ZYREX_SIZEOF_RELATIVE_JUMP, &fresh),
+        ZYAN_STATUS_SUCCESS);
+    EXPECT_EQ(ZyrexTrampolineReleaseAll(), ZYAN_STATUS_SUCCESS);
+}

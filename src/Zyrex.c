@@ -28,6 +28,7 @@
 #include <Zydis/Zydis.h>
 #include <Zyrex/Zyrex.h>
 #include <Zyrex/Barrier.h>
+#include <Zyrex/Internal/Trampoline.h>
 
 /* ============================================================================================== */
 /* Exported functions                                                                             */
@@ -57,7 +58,20 @@ ZyanStatus ZyrexInitialize(void)
 
 ZyanStatus ZyrexShutdown(void)
 {
-    return ZyrexBarrierSystemShutdown();
+    return ZyrexShutdownEx(ZYREX_SHUTDOWN_FLAG_NONE);
+}
+
+ZyanStatus ZyrexShutdownEx(ZyanU32 flags)
+{
+    ZyanStatus status = ZYAN_STATUS_SUCCESS;
+    if (flags & ZYREX_SHUTDOWN_FLAG_RELEASE_TRAMPOLINES)
+    {
+        status = ZyrexTrampolineReleaseAll();
+    }
+
+    // Always shut the barrier system down; surface the first failure.
+    const ZyanStatus barrier_status = ZyrexBarrierSystemShutdown();
+    return ZYAN_SUCCESS(status) ? barrier_status : status;
 }
 
 /* ---------------------------------------------------------------------------------------------- */

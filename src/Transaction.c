@@ -89,6 +89,11 @@ typedef struct ZyrexOperation_
      *          a state where the patched jump and this pointer disagree.
      */
     ZyanConstVoidPointer* accessor;
+    /**
+     * @brief   For a remove operation, release (unmap) the trampoline on commit instead of
+     *          quarantining it. Ignored for an attach operation.
+     */
+    ZyanBool release_trampoline;
 } ZyrexOperation;
 
 /* ============================================================================================== */
@@ -409,8 +414,9 @@ ZyanStatus ZyrexTransactionCommitEx(const void** failed_operation)
 
     if (ZYAN_SUCCESS(status))
     {
-        // Every operation applied. The trampolines of removed hooks are no longer referenced;
-        // attach trampolines remain live as the installed hooks.
+        // Every operation applied. A removed hook's trampoline is quarantined by default so a
+        // thread still referencing it stays safe; the caller can opt into releasing it. Attach
+        // trampolines remain live as the installed hooks.
         for (ZyanISize i = 0; i < (ZyanISize)g_transaction_data.pending_operations.size; ++i)
         {
             const ZyrexOperation* const op =
@@ -418,7 +424,14 @@ ZyanStatus ZyrexTransactionCommitEx(const void** failed_operation)
             if ((op->type == ZYREX_HOOK_TYPE_INLINE) &&
                 (op->action == ZYREX_OPERATION_ACTION_REMOVE))
             {
-                ZYAN_UNUSED(ZyrexTrampolineFree(op->trampoline));
+                if (op->release_trampoline)
+                {
+                    ZYAN_UNUSED(ZyrexTrampolineFree(op->trampoline));
+                }
+                else
+                {
+                    ZYAN_UNUSED(ZyrexTrampolineQuarantine(op->trampoline));
+                }
             }
         }
     }
@@ -577,6 +590,11 @@ ZyanStatus ZyrexInstallInlineHook(void* address, const void* callback,
 
 ZyanStatus ZyrexRemoveInlineHook(ZyanConstVoidPointer* original)
 {
+    return ZyrexRemoveInlineHookEx(original, ZYREX_REMOVE_HOOK_FLAG_NONE);
+}
+
+ZyanStatus ZyrexRemoveInlineHookEx(ZyanConstVoidPointer* original, ZyanU32 flags)
+{
     ZyanThreadId tid;
     ZYAN_CHECK(ZyanThreadGetCurrentThreadId(&tid));
 
@@ -604,6 +622,8 @@ ZyanStatus ZyrexRemoveInlineHook(ZyanConstVoidPointer* original)
     operation.address = target;
     operation.trampoline = trampoline;
     operation.accessor = original;
+    operation.release_trampoline =
+        (flags & ZYREX_REMOVE_HOOK_FLAG_RELEASE_TRAMPOLINE) ? ZYAN_TRUE : ZYAN_FALSE;
 
     return ZyanVectorPushBack(&g_transaction_data.pending_operations, &operation);
 }
