@@ -19,7 +19,13 @@ jobs:
         uses: actions/checkout@v4
         with: { submodules: recursive }
 
+      # The pinned zydis submodule (and the top-level project) still declare
+      # cmake_minimum_required < 3.5, which CMake 4.x rejects; raise the policy floor for the whole
+      # dependency tree. Set it via env, not -D: on the Windows runner the -D form reached CMake as
+      # a truncated "3" and broke the googletest sub-build.
       - name: Configure
+        env:
+          CMAKE_POLICY_VERSION_MINIMUM: "3.5"
         run: cmake -S . -B build -DZYREX_BUILD_TESTS=ON -DZYREX_BUILD_EXAMPLES=ON
 
       - name: Build
