@@ -116,6 +116,19 @@ ZyanStatus ZyrexBarrierSystemInitialize()
 
 ZyanStatus ZyrexBarrierSystemShutdown()
 {
+    // Free the calling thread's barrier context before releasing the TLS slot. The per-thread
+    // cleanup callback only runs on thread exit, so the current thread's context would otherwise
+    // leak when the slot is freed.
+    ZyanVector* vector;
+    if (ZYAN_SUCCESS(ZyanThreadTlsGetValue(g_barrier_tls_index, (void*)&vector)) &&
+        (vector != ZYAN_NULL))
+    {
+        ZyanVectorDestroy(vector);
+        // TODO: Replace with ZyanMemoryFree in the future
+        ZYAN_FREE(vector);
+        ZYAN_UNUSED(ZyanThreadTlsSetValue(g_barrier_tls_index, ZYAN_NULL));
+    }
+
     return ZyanThreadTlsFree(g_barrier_tls_index);
 }
 

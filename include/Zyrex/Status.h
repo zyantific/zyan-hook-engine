@@ -59,7 +59,15 @@ extern "C" {
  * @brief   Could not allocate a suitable trampoline memory region.
  */
 #define ZYREX_STATUS_COULD_NOT_ALLOCATE_TRAMPOLINE \
-    ZYAN_MAKE_STATUS(1, ZYAN_MODULE_ZYDIS, 0x00)
+    ZYAN_MAKE_STATUS(1, ZYAN_MODULE_ZYREX, 0x00)
+
+/**
+ * @brief   The prologue contains an instruction the relocation engine does not support (currently
+ *          a relative `CALL`, whose relocation requires a trampoline-lifetime policy that is not
+ *          yet in place).
+ */
+#define ZYREX_STATUS_UNSUPPORTED_INSTRUCTION \
+    ZYAN_MAKE_STATUS(1, ZYAN_MODULE_ZYREX, 0x01)
 
 /* ---------------------------------------------------------------------------------------------- */
 

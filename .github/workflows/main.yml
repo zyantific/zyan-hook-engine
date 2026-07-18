@@ -3,23 +3,33 @@ name: GitHub Actions CI
 on: [push, pull_request]
 
 jobs:
-  cmake-build:
-    name: CMake build (${{ matrix.image_name }})
-    runs-on: ${{ matrix.image_name }}
+  build-and-test:
+    name: Build and test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
 
     strategy:
+      fail-fast: false
       matrix:
-        image_name: [macOS-latest, windows-2019, ubuntu-20.04]
+        # macos-13 is the x86-64 (Intel) runner; the engine is x86-64 only, so newer arm64 macOS
+        # runners cannot execute the hooking tests.
+        os: [ubuntu-latest, windows-latest, macos-13]
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with: { submodules: recursive }
-      - name: Configuring
-        run: |
-          mkdir build
-          cd build
-          cmake ..
-      - name: Building
-        run: |
-          cmake --build build --config Release
+
+      # The pinned zydis submodule (and the top-level project) still declare
+      # cmake_minimum_required < 3.5, which CMake 4.x rejects; raise the policy floor for the whole
+      # dependency tree. Set it via env, not -D: on the Windows runner the -D form reached CMake as
+      # a truncated "3" and broke the googletest sub-build.
+      - name: Configure
+        env:
+          CMAKE_POLICY_VERSION_MINIMUM: "3.5"
+        run: cmake -S . -B build -DZYREX_BUILD_TESTS=ON -DZYREX_BUILD_EXAMPLES=ON
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Test
+        run: ctest --test-dir build --build-config Release --output-on-failure

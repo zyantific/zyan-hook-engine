@@ -165,6 +165,15 @@ typedef struct ZyrexTrampolineChunk_
      */
     ZyanBool is_used;
     /**
+     * @brief   Signals, if the trampoline chunk has been quarantined.
+     *
+     * A quarantined chunk belongs to a removed hook whose trampoline was retained rather than
+     * released (the default policy). Its memory stays mapped and it is never handed out to a new
+     * hook, so any thread still executing in it or returning into a `CALL` relocated into it is
+     * safe. See the reclamation-policy section of the design spec.
+     */
+    ZyanBool is_quarantined;
+    /**
      * @brief   The address of the callback function.
      */
     ZyanUPointer callback_address;
@@ -241,6 +250,32 @@ ZyanStatus ZyrexTrampolineCreate(const void* address, const void* callback,
  * @return  A zyan status code.
  */
 ZyanStatus ZyrexTrampolineFree(ZyrexTrampolineChunk* trampoline);
+
+/**
+ * @brief   Quarantines the given trampoline instead of releasing its memory.
+ *
+ * @param   trampoline  The trampoline chunk.
+ *
+ * @return  A zyan status code.
+ *
+ * The chunk is retired but its memory is kept mapped and is never reused, so a thread that still
+ * references it (an instruction pointer inside it, or a return address a relocated `CALL` pushed
+ * onto its stack) stays safe. This is the default release policy for a removed hook. Use
+ * `ZyrexTrampolineFree` only when the caller can guarantee no such reference exists.
+ */
+ZyanStatus ZyrexTrampolineQuarantine(ZyrexTrampolineChunk* trampoline);
+
+/**
+ * @brief   Releases every trampoline region, including quarantined ones, and tears down the
+ *          trampoline subsystem.
+ *
+ * @return  A zyan status code.
+ *
+ * Intended for process finalization. The caller must guarantee that no thread will execute any
+ * hook or trampoline afterward, because this unmaps trampolines that quarantine would otherwise
+ * keep alive.
+ */
+ZyanStatus ZyrexTrampolineReleaseAll(void);
 
 /* ---------------------------------------------------------------------------------------------- */
 /* Searching                                                                                      */

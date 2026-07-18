@@ -155,7 +155,8 @@ ZYREX_EXPORT ZyanStatus ZyrexTransactionCommit(void);
 /**
  * @brief   Commits the current transaction.
  *
- * @param   failed_operation    Receives a pointer to the operation that failed the transaction.
+ * @param   failed_operation    Receives the target address of the operation that failed the
+ *                              transaction, if any.
  *
  * @return  A zyan status code.
  */
@@ -214,14 +215,47 @@ ZYREX_EXPORT ZyanStatus ZyrexInstallInlineHook(void* address, const void* callba
 /* ---------------------------------------------------------------------------------------------- */
 
 /**
+ * @brief   Flags controlling how a hook removal releases its trampoline.
+ */
+typedef enum ZyrexRemoveHookFlags_
+{
+    /**
+     * @brief   Default behavior: quarantine the trampoline (keep its memory mapped) on commit.
+     */
+    ZYREX_REMOVE_HOOK_FLAG_NONE                = 0x00000000,
+    /**
+     * @brief   Release (unmap) the trampoline memory on commit instead of quarantining it.
+     *
+     * Only safe if the caller can guarantee that no thread still references the trampoline - no
+     * instruction pointer inside it and no return address a relocated `CALL` left on a stack.
+     * Using it otherwise is a use-after-free.
+     */
+    ZYREX_REMOVE_HOOK_FLAG_RELEASE_TRAMPOLINE  = 0x00000001
+} ZyrexRemoveHookFlags;
+
+/**
  * @brief   Removes an inline hook at the given `address`.
  *
  * @param   original    A pointer to the trampoline address received during the hook attaching.
  *                      Receives the address of the original function after removing the hook.
  *
  * @return  A zyan status code.
+ *
+ * The trampoline is quarantined (its memory kept mapped) on commit. Use
+ * `ZyrexRemoveInlineHookEx` with `ZYREX_REMOVE_HOOK_FLAG_RELEASE_TRAMPOLINE` to release it.
  */
 ZYREX_EXPORT ZyanStatus ZyrexRemoveInlineHook(ZyanConstVoidPointer* original);
+
+/**
+ * @brief   Removes an inline hook at the given `address`, controlling trampoline release.
+ *
+ * @param   original    A pointer to the trampoline address received during the hook attaching.
+ *                      Receives the address of the original function after removing the hook.
+ * @param   flags       A combination of `ZyrexRemoveHookFlags`.
+ *
+ * @return  A zyan status code.
+ */
+ZYREX_EXPORT ZyanStatus ZyrexRemoveInlineHookEx(ZyanConstVoidPointer* original, ZyanU32 flags);
 
 /* ---------------------------------------------------------------------------------------------- */
 

@@ -70,6 +70,13 @@ typedef union ZyrexTrampolineRegion_
          * @rief    The number of unused trampoline-chunks.
          */
         ZyanUSize number_of_unused_chunks;
+        /**
+         * @brief   The number of quarantined trampoline-chunks.
+         *
+         * Quarantined chunks are neither reused nor counted as unused, and a region is never
+         * released while any of them live in it. Keeps the reclamation invariant explicit.
+         */
+        ZyanUSize number_of_quarantined_chunks;
     } header;
     /**
      * @brief   The trampoline-chunks.
@@ -125,7 +132,23 @@ static struct
 /* Helper functions                                                                               */
 /* ---------------------------------------------------------------------------------------------- */
 
-#ifdef ZYAN_WINDOWS
+/**
+ * @brief   Checks whether the given page protection permits reading.
+ *
+ * @param   protection  The page protection value from `ZyanMemoryVirtualQuery`.
+ *
+ * @return  `ZYAN_TRUE` if readable, `ZYAN_FALSE` otherwise.
+ */
+static ZyanBool ZyrexIsReadableProtection(ZyanMemoryPageProtection protection)
+{
+#if defined(ZYAN_WINDOWS)
+    return (protection & (PAGE_READONLY | PAGE_READWRITE | PAGE_WRITECOPY |
+        PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))
+        ? ZYAN_TRUE : ZYAN_FALSE;
+#else
+    return (protection & ZYAN_PAGE_READONLY) ? ZYAN_TRUE : ZYAN_FALSE;
+#endif
+}
 
 /**
  * @brief   Returns the amount of bytes that can be read from the memory region starting at the
@@ -145,42 +168,35 @@ static ZyanStatus ZyrexGetSizeOfReadableMemoryRegion(const void* address, ZyanUS
     ZYAN_ASSERT(address);
     ZYAN_ASSERT(size);
 
-    static const DWORD read_mask =
-        PAGE_EXECUTE_READ |
-        PAGE_EXECUTE_READWRITE |
-        PAGE_EXECUTE_WRITECOPY |
-        PAGE_READONLY |
-        PAGE_READWRITE |
-        PAGE_WRITECOPY;
-
-    MEMORY_BASIC_INFORMATION info;
     ZyanU8* current_address = (ZyanU8*)address;
     ZyanUSize current_size = 0;
     while (current_size < *size)
     {
-        ZYAN_MEMSET(&info, 0, sizeof(info));
-        if (!VirtualQuery(current_address, &info, sizeof(info)))
-        {
-            return ZYAN_STATUS_BAD_SYSTEMCALL;
-        }
-        if ((info.State != MEM_COMMIT) || !(info.Protect & read_mask))
+        ZyanMemoryRegionInfo info;
+        ZYAN_CHECK(ZyanMemoryVirtualQuery(current_address, &info));
+
+        // A non-committed (free/reserved) region or a committed-but-unreadable page (e.g. a
+        // `PROT_NONE`/`PAGE_NOACCESS` page) bounds the readable range. Note that on Windows a
+        // `PAGE_GUARD` page is treated as readable by the protection mask below and does not stop
+        // the scan here.
+        if ((info.state != ZYAN_MEMORY_REGION_STATE_COMMITTED) ||
+            !ZyrexIsReadableProtection(info.protection))
         {
             *size = current_size;
             return ZYAN_STATUS_SUCCESS;
         }
-        current_address = (ZyanU8*)info.BaseAddress + info.RegionSize;
+
+        current_address = (ZyanU8*)info.base + info.size;
         if (current_size == 0)
         {
             current_size = (ZyanUPointer)current_address - (ZyanUPointer)address;
             continue;
         }
-        current_size += info.RegionSize;
+        current_size += info.size;
     }
 
     return ZYAN_STATUS_SUCCESS;
 }
-
-#endif
 
 /* ---------------------------------------------------------------------------------------------- */
 
@@ -280,23 +296,28 @@ static ZyanBool ZyrexTrampolineRegionInRange(ZyanUPointer region_address,
     ZYAN_ASSERT(g_trampoline_data.is_initialized);
     ZYAN_ASSERT(ZYAN_IS_ALIGNED_TO(region_address, g_trampoline_data.region_size));
 
-    // Skip the first chunk as it shares memory with the region-header
-    const ZyanIPointer region_base = region_address + sizeof(ZyrexTrampolineChunk);
+    // The region spans [region_address, region_address + region_size). A relative jump can reach a
+    // chunk in this region from a target only if the target is within relative-jump range of the
+    // region. Use the nearest region edge to each target: if even that exceeds the range, no chunk
+    // here can serve the target. Conservative pre-filter; the exact per-chunk check happens in
+    // `ZyrexTrampolineRegionFindChunkInRegion`.
+    const ZyanIPointer region_start = (ZyanIPointer)region_address;
+    const ZyanIPointer region_end   =
+        (ZyanIPointer)region_address + (ZyanIPointer)g_trampoline_data.region_size;
 
-    const ZyanIPointer distance_lo =
-        region_base - (ZyanIPointer)address_lo + (ZyanIPointer)address_lo < region_base
-            ? sizeof(ZyrexTrampolineChunk)
-            : sizeof(ZyrexTrampolineChunk) * (g_trampoline_data.chunks_per_region - 1);
-    if ((ZYAN_ABS(distance_lo) > ZYREX_RANGEOF_RELATIVE_JUMP))
+    const ZyanIPointer lo = (ZyanIPointer)address_lo;
+    const ZyanIPointer hi = (ZyanIPointer)address_hi;
+
+    const ZyanIPointer distance_lo = (lo < region_start) ? (region_start - lo)
+                                   : (lo > region_end)   ? (lo - region_end) : 0;
+    if (distance_lo > ZYREX_RANGEOF_RELATIVE_JUMP)
     {
         return ZYAN_FALSE;
     }
 
-    const ZyanIPointer distance_hi =
-        region_base - (ZyanIPointer)address_hi + (ZyanIPointer)address_hi < region_base
-            ? sizeof(ZyrexTrampolineChunk)
-            : sizeof(ZyrexTrampolineChunk) * (g_trampoline_data.chunks_per_region - 1);
-    if ((ZYAN_ABS(distance_hi) > ZYREX_RANGEOF_RELATIVE_JUMP))
+    const ZyanIPointer distance_hi = (hi < region_start) ? (region_start - hi)
+                                   : (hi > region_end)   ? (hi - region_end) : 0;
+    if (distance_hi > ZYREX_RANGEOF_RELATIVE_JUMP)
     {
         return ZYAN_FALSE;
     }
@@ -333,7 +354,8 @@ static ZyanBool ZyrexTrampolineRegionFindChunkInRegion(ZyrexTrampolineRegion* re
     // Skip the first chunk as it shares memory with the region-header
     for (ZyanUSize i = 1; i < g_trampoline_data.chunks_per_region; ++i)
     {
-        if (region->chunks[i].is_used)
+        // A quarantined chunk must never be reused: a thread may still reference its memory.
+        if (region->chunks[i].is_used || region->chunks[i].is_quarantined)
         {
             continue;
         }
@@ -539,116 +561,106 @@ static ZyanStatus ZyrexTrampolineRegionAllocate(ZyanUPointer address_lo, ZyanUPo
     ZYAN_ASSERT(region);
     ZYAN_ASSERT(g_trampoline_data.is_initialized);
 
-#ifdef ZYAN_WINDOWS
-
-    SYSTEM_INFO system_info;
-    GetSystemInfo(&system_info);
-
     const ZyanUSize region_size = g_trampoline_data.region_size;
-    const ZyanUPointer mid = (address_lo + address_hi) / 2;
-    const ZyanU8* alloc_address_lo =
-        (const ZyanU8*)ZYAN_ALIGN_DOWN(mid, (ZyanUPointer)region_size);
-    const ZyanU8* alloc_address_hi =
-        (const ZyanU8*)ZYAN_ALIGN_UP(mid, (ZyanUPointer)region_size);
+    // Overflow-safe midpoint of the target range.
+    const ZyanUPointer mid = address_lo + (address_hi - address_lo) / 2;
 
-    MEMORY_BASIC_INFORMATION memory_info;
+    // Two search cursors move away from the midpoint, one down and one up. Each is retired when it
+    // leaves the reachable +/-2 GiB window, when its query fails, or when a step fails to make
+    // monotonic progress (which bounds the loop structurally rather than relying on address
+    // wraparound). When both are retired, no region is reachable.
+    ZyanUPointer cursor_lo = ZYAN_ALIGN_DOWN(mid, region_size);
+    ZyanUPointer cursor_hi = ZYAN_ALIGN_UP(mid, region_size);
+    ZyanBool active_lo = ZYAN_TRUE;
+    ZyanBool active_hi = ZYAN_TRUE;
 
-#endif
-
-    while (ZYAN_TRUE)
+    while (active_lo || active_hi)
     {
-#ifdef ZYAN_WINDOWS
-
-        // Skip reserved address regions
-        if (alloc_address_lo < (ZyanU8*)system_info.lpMinimumApplicationAddress)
+        if (active_lo)
         {
-            alloc_address_lo = (const ZyanU8*)system_info.lpMinimumApplicationAddress;
-            alloc_address_lo = 
-                (const ZyanU8*)(ZYAN_ALIGN_UP((ZyanUPointer)alloc_address_lo, region_size));
-        }
-        if (alloc_address_lo > (ZyanU8*)system_info.lpMaximumApplicationAddress)
-        {
-            alloc_address_lo = (const ZyanU8*)system_info.lpMaximumApplicationAddress;
-            alloc_address_lo = 
-                (const ZyanU8*)(ZYAN_ALIGN_DOWN((ZyanUPointer)alloc_address_lo, region_size));
-        }
-        if (alloc_address_hi < (ZyanU8*)system_info.lpMinimumApplicationAddress)
-        {
-            alloc_address_hi = (const ZyanU8*)system_info.lpMinimumApplicationAddress;
-            alloc_address_lo = 
-                (const ZyanU8*)(ZYAN_ALIGN_UP((ZyanUPointer)alloc_address_lo, region_size));
-        }
-        if (alloc_address_hi > (ZyanU8*)system_info.lpMaximumApplicationAddress)
-        {
-            alloc_address_hi = (const ZyanU8*)system_info.lpMaximumApplicationAddress;
-            alloc_address_lo = 
-                (const ZyanU8*)(ZYAN_ALIGN_DOWN((ZyanUPointer)alloc_address_lo, region_size));
-        }
-
-//#endif
-
-        // TODO: Only `RESERVE` the memory region and `COMMIT` pages on demand to reduce memory
-        // TODO: imprint
-
-        ZyanU8 c = 0;
-
-        if (ZyrexTrampolineRegionInRange((ZyanUPointer)alloc_address_lo, address_lo, address_hi))
-        {
-            ZYAN_MEMSET(&memory_info, 0, sizeof(memory_info));
-            if (!VirtualQuery(alloc_address_lo, &memory_info, sizeof(memory_info)))
+            if (!ZyrexTrampolineRegionInRange(cursor_lo, address_lo, address_hi))
             {
-                return ZYAN_STATUS_BAD_SYSTEMCALL;
+                active_lo = ZYAN_FALSE;
             }
-            if ((memory_info.State == MEM_FREE) && (memory_info.RegionSize >= region_size))
+            else
             {
-                *region = VirtualAlloc((void*)alloc_address_lo, region_size,
-                    MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
-                if (*region)
+                ZyanMemoryRegionInfo info;
+                if (!ZYAN_SUCCESS(ZyanMemoryVirtualQuery((const void*)cursor_lo, &info)))
                 {
-                    goto InitializeRegion;
+                    active_lo = ZYAN_FALSE;
+                }
+                else
+                {
+                    if ((info.state == ZYAN_MEMORY_REGION_STATE_FREE) &&
+                        (info.size >= region_size))
+                    {
+                        void* base = (void*)cursor_lo;
+                        if (ZYAN_SUCCESS(ZyanMemoryVirtualAlloc(&base, region_size,
+                            ZYAN_PAGE_EXECUTE_READWRITE)))
+                        {
+                            *region = (ZyrexTrampolineRegion*)base;
+                            goto InitializeRegion;
+                        }
+                    }
+                    const ZyanUPointer next_lo = (ZyanUPointer)info.base - region_size;
+                    if (next_lo >= cursor_lo) // no downward progress (underflow / stuck)
+                    {
+                        active_lo = ZYAN_FALSE;
+                    }
+                    else
+                    {
+                        cursor_lo = next_lo;
+                    }
                 }
             }
-            alloc_address_lo = (const ZyanU8*)((ZyanUPointer)memory_info.BaseAddress - region_size);
-            ++c;
         }
 
-        if (ZyrexTrampolineRegionInRange((ZyanUPointer)alloc_address_hi, address_lo, address_hi))
+        if (active_hi)
         {
-            memset(&memory_info, 0, sizeof(memory_info));
-            if (!VirtualQuery(alloc_address_hi, &memory_info, sizeof(memory_info)))
+            if (!ZyrexTrampolineRegionInRange(cursor_hi, address_lo, address_hi))
             {
-                return ZYAN_STATUS_BAD_SYSTEMCALL;
+                active_hi = ZYAN_FALSE;
             }
-            if ((memory_info.State == MEM_FREE) && (memory_info.RegionSize >= region_size))
+            else
             {
-                *region = VirtualAlloc((void*)alloc_address_hi, region_size,
-                    MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE);
-                if (*region)
+                ZyanMemoryRegionInfo info;
+                if (!ZYAN_SUCCESS(ZyanMemoryVirtualQuery((const void*)cursor_hi, &info)))
                 {
-                    goto InitializeRegion;
+                    active_hi = ZYAN_FALSE;
+                }
+                else
+                {
+                    if ((info.state == ZYAN_MEMORY_REGION_STATE_FREE) &&
+                        (info.size >= region_size))
+                    {
+                        void* base = (void*)cursor_hi;
+                        if (ZYAN_SUCCESS(ZyanMemoryVirtualAlloc(&base, region_size,
+                            ZYAN_PAGE_EXECUTE_READWRITE)))
+                        {
+                            *region = (ZyrexTrampolineRegion*)base;
+                            goto InitializeRegion;
+                        }
+                    }
+                    const ZyanUPointer next_hi = (ZyanUPointer)info.base + info.size;
+                    if (next_hi <= cursor_hi) // no upward progress (top-of-space sentinel / stuck)
+                    {
+                        active_hi = ZYAN_FALSE;
+                    }
+                    else
+                    {
+                        cursor_hi = next_hi;
+                    }
                 }
             }
-            alloc_address_hi = (const ZyanU8*)((ZyanUPointer)memory_info.BaseAddress + region_size);
-            ++c;
         }
-
-        if (c == 0)
-        {
-            return ZYAN_STATUS_OUT_OF_RANGE;
-        }
-#else
-        ZYAN_UNUSED(address_lo);
-        ZYAN_UNUSED(address_hi);
-#endif
     }
 
-    // ZYAN_UNREACHABLE;
+    return ZYAN_STATUS_OUT_OF_RANGE;
 
-#ifdef ZYAN_WINDOWS
 InitializeRegion:
     (*region)->header.signature = ZYREX_TRAMPOLINE_REGION_SIGNATURE;
     (*region)->header.number_of_unused_chunks = g_trampoline_data.chunks_per_region - 1;
-#endif
+    (*region)->header.number_of_quarantined_chunks = 0;
 
     return ZYAN_STATUS_SUCCESS;
 }
@@ -699,6 +711,7 @@ static ZyanStatus ZyrexTrampolineChunkInit(ZyrexTrampolineChunk* chunk, const vo
     ZYAN_ASSERT(min_bytes_to_reloc <= max_bytes_to_read);
 
     chunk->is_used = ZYAN_TRUE;
+    chunk->is_quarantined = ZYAN_FALSE;
     chunk->callback_address = (ZyanUPointer)callback;
 
 #if defined(ZYAN_X64)
@@ -763,13 +776,11 @@ ZyanStatus ZyrexTrampolineCreate(const void* address, const void* callback,
 
     // Check if the memory region of the target function has enough space for the hook code
     ZyanUSize source_size = ZYREX_TRAMPOLINE_MAX_CODE_SIZE;
-#ifdef ZYAN_WINDOWS
     ZYAN_CHECK(ZyrexGetSizeOfReadableMemoryRegion(address, &source_size));
     if (source_size < min_bytes_to_reloc)
     {
         return ZYAN_STATUS_INVALID_OPERATION;
     }
-#endif
 
     if (!g_trampoline_data.is_initialized)
     {
@@ -894,7 +905,11 @@ ZyanStatus ZyrexTrampolineFree(ZyrexTrampolineChunk* trampoline)
     }
 
     ZyrexTrampolineRegion* const region = (ZyrexTrampolineRegion*)region_address;
-    if (region->header.number_of_unused_chunks == g_trampoline_data.chunks_per_region - 1 - 1)
+    // Only unmap the region once this is its last live chunk and it holds no quarantined chunk.
+    // Unmapping a region with a quarantined chunk would reintroduce the use-after-free the
+    // quarantine exists to prevent.
+    if ((region->header.number_of_unused_chunks == g_trampoline_data.chunks_per_region - 1 - 1) &&
+        (region->header.number_of_quarantined_chunks == 0))
     {
         ZYAN_CHECK(ZyrexTrampolineRegionRemove(region));
         ZYAN_CHECK(ZyrexTrampolineRegionFree(region));
@@ -914,6 +929,67 @@ ZyanStatus ZyrexTrampolineFree(ZyrexTrampolineChunk* trampoline)
         ZYAN_CHECK(ZyanVectorDestroy(&g_trampoline_data.regions));
         g_trampoline_data.is_initialized = ZYAN_FALSE;
     }
+
+    return ZYAN_STATUS_SUCCESS;
+}
+
+ZyanStatus ZyrexTrampolineQuarantine(ZyrexTrampolineChunk* trampoline)
+{
+    if (!trampoline)
+    {
+        return ZYAN_STATUS_INVALID_ARGUMENT;
+    }
+    if (!g_trampoline_data.is_initialized)
+    {
+        return ZYAN_STATUS_INVALID_OPERATION;
+    }
+
+    const ZyanUPointer region_address = ZYAN_ALIGN_DOWN((ZyanUPointer)trampoline,
+        g_trampoline_data.region_size);
+    ZyanUSize found_index;
+    const ZyanStatus status =
+        ZyanVectorBinarySearch(&g_trampoline_data.regions, &region_address, &found_index,
+            (ZyanComparison)&ZyanComparePointer);
+    ZYAN_CHECK(status);
+
+    if (status == ZYAN_STATUS_FALSE)
+    {
+        return ZYAN_STATUS_NOT_FOUND;
+    }
+
+    ZyrexTrampolineRegion* const region = (ZyrexTrampolineRegion*)region_address;
+
+    // Retire the chunk without touching `number_of_unused_chunks`, so it is neither reused nor
+    // able to bring the region to the release threshold. The region stays mapped for the process
+    // lifetime.
+    ZYAN_CHECK(ZyrexTrampolineRegionUnprotect(region));
+    trampoline->is_used = ZYAN_FALSE;
+    trampoline->is_quarantined = ZYAN_TRUE;
+    ++region->header.number_of_quarantined_chunks;
+    ZYAN_CHECK(ZyrexTrampolineRegionProtect(region));
+
+    return ZYAN_STATUS_SUCCESS;
+}
+
+ZyanStatus ZyrexTrampolineReleaseAll(void)
+{
+    if (!g_trampoline_data.is_initialized)
+    {
+        return ZYAN_STATUS_SUCCESS;
+    }
+
+    ZyanUSize size;
+    ZYAN_CHECK(ZyanVectorGetSize(&g_trampoline_data.regions, &size));
+    for (ZyanUSize i = 0; i < size; ++i)
+    {
+        ZyrexTrampolineRegion** const element =
+            ZyanVectorGetMutable(&g_trampoline_data.regions, i);
+        ZYAN_ASSERT(element && *element);
+        ZYAN_UNUSED(ZyrexTrampolineRegionFree(*element));
+    }
+
+    ZYAN_CHECK(ZyanVectorDestroy(&g_trampoline_data.regions));
+    g_trampoline_data.is_initialized = ZYAN_FALSE;
 
     return ZYAN_STATUS_SUCCESS;
 }

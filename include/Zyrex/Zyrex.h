@@ -107,13 +107,44 @@ extern "C" {
 ZYREX_EXPORT ZyanStatus ZyrexInitialize(void);
 
 /**
+ * @brief   Flags controlling `Zyrex` finalization.
+ */
+typedef enum ZyrexShutdownFlags_
+{
+    /**
+     * @brief   Default behavior: leave quarantined trampolines mapped.
+     */
+    ZYREX_SHUTDOWN_FLAG_NONE                = 0x00000000,
+    /**
+     * @brief   Release every remaining trampoline, including quarantined ones.
+     *
+     * Only safe if no thread will execute any hook or trampoline afterward.
+     */
+    ZYREX_SHUTDOWN_FLAG_RELEASE_TRAMPOLINES = 0x00000001
+} ZyrexShutdownFlags;
+
+/**
  * @brief   Releases global resources allocated by the `Zyrex` hook engine.
+ *
+ * @return  A zyan status code.
+ *
+ * No `Zyrex*` API function should be called after invoking this function. Quarantined trampolines
+ * are left mapped; use `ZyrexShutdownEx` with `ZYREX_SHUTDOWN_FLAG_RELEASE_TRAMPOLINES` to release
+ * them.
+ */
+ZYREX_EXPORT ZyanStatus ZyrexShutdown(void);
+
+/**
+ * @brief   Releases global resources allocated by the `Zyrex` hook engine, controlling trampoline
+ *          cleanup.
+ *
+ * @param   flags   A combination of `ZyrexShutdownFlags`.
  *
  * @return  A zyan status code.
  *
  * No `Zyrex*` API function should be called after invoking this function.
  */
-ZYREX_EXPORT ZyanStatus ZyrexShutdown(void);
+ZYREX_EXPORT ZyanStatus ZyrexShutdownEx(ZyanU32 flags);
 
 /* ---------------------------------------------------------------------------------------------- */
 /* Information                                                                                    */

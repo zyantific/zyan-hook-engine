@@ -216,3 +216,47 @@ if (ZYREX_BUILD_EXAMPLES)
     zyan_set_common_flags("Barrier")
     zyan_maybe_enable_wpo("Barrier")
 endif ()
+
+# =============================================================================================== #
+# Tests                                                                                           #
+# =============================================================================================== #
+
+option(ZYREX_BUILD_TESTS "Build tests" OFF)
+
+if (ZYREX_BUILD_TESTS)
+    include(FetchContent)
+    FetchContent_Declare(
+        googletest
+        GIT_REPOSITORY https://github.com/google/googletest.git
+        GIT_TAG        v1.14.0
+    )
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(googletest)
+
+    enable_testing()
+
+    add_executable("TestRelocation" "tests/Relocation.cpp")
+    target_link_libraries("TestRelocation" "Zyrex" "Zydis" "Zycore" "gtest" "gtest_main")
+    target_compile_definitions("TestRelocation" PRIVATE "_CRT_SECURE_NO_WARNINGS")
+    add_test("Relocation" "TestRelocation")
+
+    add_executable("TestTrampoline" "tests/Trampoline.cpp")
+    target_link_libraries("TestTrampoline" "Zyrex" "Zydis" "Zycore" "gtest" "gtest_main")
+    target_compile_definitions("TestTrampoline" PRIVATE "_CRT_SECURE_NO_WARNINGS")
+    add_test("Trampoline" "TestTrampoline")
+
+    add_executable("TestBarrier" "tests/Barrier.cpp")
+    target_link_libraries("TestBarrier" "Zyrex" "Zydis" "Zycore" "gtest" "gtest_main")
+    target_compile_definitions("TestBarrier" PRIVATE "_CRT_SECURE_NO_WARNINGS")
+    add_test("Barrier" "TestBarrier")
+
+    add_executable("TestInlineHook" "tests/InlineHook.cpp")
+    target_link_libraries("TestInlineHook" "Zyrex" "Zydis" "Zycore" "gtest" "gtest_main")
+    target_compile_definitions("TestInlineHook" PRIVATE "_CRT_SECURE_NO_WARNINGS")
+    add_test("InlineHook" "TestInlineHook")
+
+    add_executable("TestMigration" "tests/Migration.cpp")
+    target_link_libraries("TestMigration" "Zyrex" "Zydis" "Zycore" "gtest" "gtest_main")
+    target_compile_definitions("TestMigration" PRIVATE "_CRT_SECURE_NO_WARNINGS")
+    add_test("Migration" "TestMigration")
+endif ()
