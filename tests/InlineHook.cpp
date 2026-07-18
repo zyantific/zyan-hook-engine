@@ -316,13 +316,13 @@ __asm__(
     "    movl $0x100, %eax\n"
     "    ret\n"
 );
-#endif
 
 static FnHookType* volatile g_call_original = &CallPrologueTarget;
 static ZyanU32 ZYAN_NOINLINE CallPrologueCallback(ZyanU32 param)
 {
     return (*g_call_original)(param) + 0x11;
 }
+#endif
 
 TEST(InlineHookTest, RelativeCallInPrologueHookedAndRemoved)
 {
