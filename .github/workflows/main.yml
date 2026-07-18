@@ -1,10 +1,5 @@
 name: GitHub Actions CI
 
-# NOTE: the tests require a Zycore that provides the virtual-memory and thread-control APIs
-# (ZyanMemoryVirtualAlloc / ZyanMemoryVirtualQuery / ZyanThreadEnumerate / ZyanThreadSuspend / ...).
-# The `dependencies/zycore` submodule must point at a commit that includes them for the test job to
-# build. Until that submodule is bumped, keep the test steps informational.
-
 on: [push, pull_request]
 
 jobs:
