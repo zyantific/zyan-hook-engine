@@ -38,7 +38,10 @@ typedef ZyanU32 (FnHookType)(ZyanU32 param);
 
 static ZyanU32 ZYAN_NOINLINE HookTarget(ZyanU32 param)
 {
-    return param;
+    // volatile: without it MSVC in Release proves this identity target returns its argument and
+    // folds a direct call into a constant, so the installed hook's effect would never be observed.
+    volatile ZyanU32 value = param;
+    return value;
 }
 
 static FnHookType* volatile g_original = &HookTarget;
@@ -360,7 +363,9 @@ TEST(InlineHookTest, RelativeCallInPrologueHookedAndRemoved)
 
 static ZyanU32 ZYAN_NOINLINE ReleaseTarget(ZyanU32 param)
 {
-    return param;
+    // volatile: prevent MSVC/Release from folding the identity call to a constant (see HookTarget).
+    volatile ZyanU32 value = param;
+    return value;
 }
 static FnHookType* volatile g_release_original = &ReleaseTarget;
 static ZyanU32 ZYAN_NOINLINE ReleaseCallback(ZyanU32 param)
@@ -395,7 +400,9 @@ TEST(InlineHookTest, RemoveWithReleaseFlagCommits)
 
 static ZyanU32 ZYAN_NOINLINE ShutdownReleaseTarget(ZyanU32 param)
 {
-    return param;
+    // volatile: prevent MSVC/Release from folding the identity call to a constant (see HookTarget).
+    volatile ZyanU32 value = param;
+    return value;
 }
 static FnHookType* volatile g_shutdown_original = &ShutdownReleaseTarget;
 static ZyanU32 ZYAN_NOINLINE ShutdownReleaseCallback(ZyanU32 param)
